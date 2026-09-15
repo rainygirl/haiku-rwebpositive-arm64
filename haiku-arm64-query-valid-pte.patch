@@ -1,0 +1,23 @@
+diff --git a/src/system/kernel/arch/arm64/VMSAv8TranslationMap.cpp b/src/system/kernel/arch/arm64/VMSAv8TranslationMap.cpp
+index 799e347ccf..cde53e2358 100644
+--- a/src/system/kernel/arch/arm64/VMSAv8TranslationMap.cpp
++++ b/src/system/kernel/arch/arm64/VMSAv8TranslationMap.cpp
+@@ -775,6 +775,18 @@ VMSAv8TranslationMap::Query(addr_t va, phys_addr_t* pa, uint32* flags)
+ 	ProcessRange(fPageTable, fInitialLevel, va, B_PAGE_SIZE, nullptr,
+ 		[=](uint64_t* ptePtr, uint64_t effectiveVa) {
+ 			uint64_t pte = atomic_get64((int64_t*)ptePtr);
++
++			// ProcessRange() hands over the slot for this address whether or
++			// not anything is mapped there. Reporting PAGE_PRESENT for an
++			// empty entry told the caller a page lives at physical address 0:
++			// set_memory_protection() then looked that up and panicked with
++			// "looking up page failed for pa 0x0". Every other Unmap/Protect
++			// path in this file tests kPteValidMask first; only Query() did
++			// not. It takes a guarded-heap allocation, which protects pages
++			// it has reserved but never touched, to walk into it.
++			if ((pte & kPteValidMask) == 0)
++				return;
++
+ 			*pa = pte & kPteAddrMask;
+ 			*flags |= PAGE_PRESENT | B_KERNEL_READ_AREA;
+ 			if (is_pte_accessed(pte))

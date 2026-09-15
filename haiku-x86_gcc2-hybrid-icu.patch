@@ -1,0 +1,42 @@
+Pick the ICU package that a secondary architecture actually has
+
+The secondary-architecture package list in the top-level Jamfile asks for "icu"
+unconditionally. On an x86_gcc2 hybrid the secondary architecture is plain x86,
+whose ICU package in the pinned HaikuPorts snapshot is icu74_x86 -- there is no
+icu_x86 -- so the image target cannot be made:
+
+    AddHaikuImagePackages: package icu not available!
+    ...skipped 20 target(s)...
+
+and no anyboot ISO is produced. The build otherwise completes: 19624 targets
+update, and jam reports no failing action, which is what makes this one slow to
+find. The message names the package but not the caller; adding the calling
+context to build/jam/ImageRules is what identified it:
+
+    [dir= system packages ] [arch= x86 ] [list= freetype icu zlib ]
+
+DefaultBuildProfiles already spells the same choice correctly for the bootstrap
+profile ("icu@gcc2 icu74@!gcc2"), so use that here. For an x86_gcc2 hybrid the
+secondary arch is not gcc2 and gets icu74_x86; a gcc2 architecture still gets
+icu.
+
+Verified against 4b0e529517 (r1beta6): with this change the nightly-anyboot
+profile builds to completion and the resulting image boots to a desktop under
+QEMU with four vCPUs.
+
+This is independent of the VAIO P patch set -- reverting that patch leaves the
+failure unchanged.
+
+diff --git a/Jamfile b/Jamfile
+index 3aaf1e6d58..8d634521f7 100644
+--- a/Jamfile
++++ b/Jamfile
+@@ -116,7 +116,7 @@ if $(HAIKU_PACKAGING_ARCHS[2]) {
+ 			in [ MultiArchSubDirSetup $(HAIKU_PACKAGING_ARCHS[2-]) ] {
+ 		on $(architectureObject) {
+ 			AddHaikuImageSystemPackages [ FFilterByBuildFeatures
+-				freetype icu zlib
++				freetype icu@gcc2 icu74@!gcc2 zlib
+
+ 				regular_image @{
+ 					ffmpeg6 glu jasper jpeg libavif libicns libpng16 libwebp mesa

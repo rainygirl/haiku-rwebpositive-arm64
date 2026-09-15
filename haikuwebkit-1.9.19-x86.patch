@@ -1,0 +1,147 @@
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WTF/wtf/haiku/RunLoopHaiku.cpp haikuwebkit/Source/WTF/wtf/haiku/RunLoopHaiku.cpp
+--- orig/haikuwebkit/Source/WTF/wtf/haiku/RunLoopHaiku.cpp	2026-08-06 17:34:11.606863300 +0000
++++ haikuwebkit/Source/WTF/wtf/haiku/RunLoopHaiku.cpp	2026-09-07 00:06:57.000000000 +0000
+@@ -151,11 +151,18 @@
+ 		m_messageRunner = nullptr;
+ 	}
+ 
+-	BMessage* message = new BMessage('tmrf');
+-	message->AddPointer("timer", this);
++	// BMessageRunner takes a const BMessage* and flattens it into the request
++	// it sends the registrar: it copies, it does not adopt. The message
++	// allocated here with new was therefore never freed, and start() is not a
++	// rare call -- WebCore re-arms its shared timer every time it schedules
++	// anything, so a page with an animation on it goes through here tens of
++	// times a second. A stack message copies just the same and leaves nothing
++	// behind.
++	BMessage message('tmrf');
++	message.AddPointer("timer", this);
+ 
+    	m_messageRunner = new BMessageRunner(m_runLoop->m_handler,
+-       	message, nextFireInterval.microseconds(), repeat ? -1 : 1);
++       	&message, nextFireInterval.microseconds(), repeat ? -1 : 1);
+ }
+ 
+ bool RunLoop::TimerBase::isActive() const
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/platform/graphics/haiku/MediaPlayerPrivateHaiku.cpp haikuwebkit/Source/WebCore/platform/graphics/haiku/MediaPlayerPrivateHaiku.cpp
+--- orig/haikuwebkit/Source/WebCore/platform/graphics/haiku/MediaPlayerPrivateHaiku.cpp	2026-08-06 17:34:22.762839000 +0000
++++ haikuwebkit/Source/WebCore/platform/graphics/haiku/MediaPlayerPrivateHaiku.cpp	2026-09-07 06:03:15.000000000 +0000
+@@ -340,7 +340,7 @@
+     // TODO something here is blocking inside the Media Kit. We should rework
+     // things so that this is run in a separate thread (Media Thread?). This
+     // would avoid the annoying freeze whenever a media is being loaded.
+-    m_mediaFile = new BMediaFile(BUrl(url.utf8().data()));
++    m_mediaFile = new BMediaFile(BUrl(url.utf8().data(), true));
+ 
+     if (m_mediaFile->InitCheck() == B_OK) {
+         for (int i = m_mediaFile->CountTracks() - 1; i >= 0; i--)
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp
+--- orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp	2026-08-06 17:34:31.990642000 +0000
++++ haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp	2026-09-07 00:06:57.000000000 +0000
+@@ -991,7 +991,19 @@
+         break;
+ 
+     case HANDLE_DRAW: {
+-        bool first = true;
++        // Collapse every other pending draw for this page into this one.
++        //
++        // BMessageQueue::RemoveMessage() hands ownership over, so each message
++        // taken out here has to be deleted here: the looper only ever deletes
++        // the message it dispatched. The previous version tried to, but its
++        // "first = false" sat inside "if (!first)", so it could never run --
++        // first stayed true, the delete never happened, and every collapsed
++        // draw message was leaked. (The dead branch was also wrong in the
++        // other direction: had it ever run, the first time through it would
++        // have deleted the message the looper still owns.)
++        //
++        // Nothing is substituted for the dispatched message any more, so
++        // ownership stays where the looper expects it.
+         BMessageQueue* queue = Looper()->MessageQueue();
+         BRect updateRect;
+         message->FindRect("update rect", &updateRect);
+@@ -1004,17 +1016,12 @@
+                 continue;
+             }
+ 
+-            if (!first) {
+-                delete message;
+-                first = false;
+-            }
+-
+-            message = nextMessage;
+-            queue->RemoveMessage(message);
++            queue->RemoveMessage(nextMessage);
+ 
+             BRect rect;
+-            message->FindRect("update rect", &rect);
+-            updateRect = updateRect | rect;
++            if (nextMessage->FindRect("update rect", &rect) == B_OK)
++                updateRect = updateRect | rect;
++            delete nextMessage;
+         }
+         paint(updateRect, false);
+         break;
+@@ -1116,8 +1123,12 @@
+ 	// need to be flagged with the intended target BWebPage,
+ 	// or else we steal or process messages intended for another
+ 	// BWebPage here!
+-    bool first = true;
++    // The last message found is copied over the dispatched one rather than
++    // substituted for it. Substituting leaked it: the looper deletes only the
++    // message it dispatched, so whatever was left in "message" at the end --
++    // taken out of the queue here, and owned here -- was never freed.
+     BMessageQueue* queue = Looper()->MessageQueue();
++    BMessage* last = NULL;
+     int32 index = 0;
+     while (BMessage* nextMessage = queue->FindMessage(message->what, index)) {
+     	BHandler* target = 0;
+@@ -1126,11 +1137,14 @@
+     		index++;
+     	    continue;
+     	}
+-        if (!first)
+-            delete message;
+-        message = nextMessage;
+-        queue->RemoveMessage(message);
+-        first = false;
++        queue->RemoveMessage(nextMessage);
++        delete last;
++        last = nextMessage;
++    }
++
++    if (last != NULL) {
++        *message = *last;
++        delete last;
+     }
+ }
+ 
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp
+--- orig/haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp	2026-08-06 17:34:32.007864200 +0000
++++ haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp	2026-09-07 00:06:57.000000000 +0000
+@@ -150,6 +150,26 @@
+ 
+ void FrameLoaderClientHaiku::detachedFromParent2()
+ {
++    // Nobody owns the BWebFrame that BWebFrame::AddChild() makes for a
++    // subframe. It holds a RefPtr to the frame, the frame owns its
++    // FrameLoader, the FrameLoader owns this client, and this client is the
++    // only thing that points back at the BWebFrame -- a cycle with no outside
++    // reference to break it. So every subframe of every page ever loaded
++    // stayed alive for the life of the process, and with it its Document, its
++    // DOM tree, its decoded images and its JavaScript wrappers.
++    //
++    // This is where WebKit tells a client that a frame is being taken apart,
++    // so this is where the cycle has to be broken. The page's main frame is
++    // owned by BWebPage and reused across navigations, so it is left alone.
++    // FrameLoader::detachFromParent() holds a Ref to the frame across this
++    // call, so releasing the last reference here cannot destroy the object the
++    // caller is standing on.
++    if (m_webFrame != nullptr && m_webPage != nullptr
++        && m_webFrame != m_webPage->MainFrame()) {
++        BWebFrame* frame = m_webFrame;
++        m_webFrame = nullptr;
++        delete frame;
++    }
+ }
+ 
+ void FrameLoaderClientHaiku::detachedFromParent3()

@@ -1,0 +1,99 @@
+diff --git a/headers/private/kernel/arch/arm64/arch_kernel_args.h b/headers/private/kernel/arch/arm64/arch_kernel_args.h
+index a5b1cabec9..12851109c2 100644
+--- a/headers/private/kernel/arch/arm64/arch_kernel_args.h
++++ b/headers/private/kernel/arch/arm64/arch_kernel_args.h
+@@ -39,6 +39,14 @@ typedef struct {
+ 	// size is 0 when the device tree names none.
+ 	addr_range	pl031_rtc;
+ 
++	// How to reach PSCI, which is the only way this architecture has to
++	// reboot or power off a generic machine. The loader already works this
++	// out to start the secondary CPUs -- from the FADT, or from the device
++	// tree "method" property -- so it passes on what it found rather than
++	// making the kernel discover it a second time.
++	uint8		psci_available;
++	uint8		psci_use_hvc;
++
+ } _PACKED arch_kernel_args;
+ 
+ #endif	/* KERNEL_ARCH_ARM64_KERNEL_ARGS_H */
+diff --git a/src/system/boot/platform/efi/arch/arm64/arch_smp.cpp b/src/system/boot/platform/efi/arch/arm64/arch_smp.cpp
+index e697a773e3..9f0399541d 100644
+--- a/src/system/boot/platform/efi/arch/arm64/arch_smp.cpp
++++ b/src/system/boot/platform/efi/arch/arm64/arch_smp.cpp
+@@ -267,6 +267,9 @@ arm64_handle_acpi_fadt(acpi_fadt_arm_boot_arch armBootFlags)
+ 		sPsciCallFn = arm64_psci_call_hvc;
+ 	else
+ 		sPsciCallFn = arm64_psci_call_smc;
++
++	gKernelArgs.arch_args.psci_available = 1;
++	gKernelArgs.arch_args.psci_use_hvc = armBootFlags.psci_use_hvc ? 1 : 0;
+ }
+ 
+ 
+@@ -278,8 +281,12 @@ arm64_handle_fdt_psci_node(const void* fdt, int node)
+ 
+ 	if (strcmp(method, "smc") == 0) {
+ 		sPsciCallFn = arm64_psci_call_smc;
++		gKernelArgs.arch_args.psci_available = 1;
++		gKernelArgs.arch_args.psci_use_hvc = 0;
+ 	} else if (strcmp(method, "hvc") == 0) {
+ 		sPsciCallFn = arm64_psci_call_hvc;
++		gKernelArgs.arch_args.psci_available = 1;
++		gKernelArgs.arch_args.psci_use_hvc = 1;
+ 	}
+ }
+ 
+diff --git a/src/system/kernel/arch/arm64/arch_cpu.cpp b/src/system/kernel/arch/arm64/arch_cpu.cpp
+index 31c3ae690f..83d20148da 100644
+--- a/src/system/kernel/arch/arm64/arch_cpu.cpp
++++ b/src/system/kernel/arch/arm64/arch_cpu.cpp
+@@ -17,6 +17,35 @@ extern "C" void _exception_vectors(void);
+ static status_t arm64_shutdown_unimp(bool reboot);
+ status_t (*gARM64ShutdownFn)(bool reboot) = arm64_shutdown_unimp;
+ 
++// PSCI is how a generic ARM machine reboots or powers off. Without it
++// arch_cpu_shutdown() returns B_UNSUPPORTED and the kernel simply stops:
++// the registrar has already torn the desktop down and released the
++// framebuffer by then, so the screen keeps whatever was last drawn -- a
++// shutdown dialog that looks stuck when in fact everything is finished and
++// only the final reset never happens. Only the Apple SMC driver ever
++// installed a shutdown function, so on QEMU virt this was every reboot.
++#define PSCI_SYSTEM_OFF		0x84000008UL
++#define PSCI_SYSTEM_RESET	0x84000009UL
++
++static bool sPsciUseHvc = false;
++
++static status_t
++arm64_psci_shutdown(bool reboot)
++{
++	register uint64 x0 asm("x0") = reboot ? PSCI_SYSTEM_RESET : PSCI_SYSTEM_OFF;
++	register uint64 x1 asm("x1") = 0;
++	register uint64 x2 asm("x2") = 0;
++	register uint64 x3 asm("x3") = 0;
++
++	if (sPsciUseHvc)
++		asm volatile("hvc #0" :: "r" (x0), "r" (x1), "r" (x2), "r" (x3));
++	else
++		asm volatile("smc #0" :: "r" (x0), "r" (x1), "r" (x2), "r" (x3));
++
++	// PSCI does not return on success.
++	return B_ERROR;
++}
++
+ 
+ status_t
+ arch_cpu_preboot_init_percpu(kernel_args *args, int curr_cpu)
+@@ -58,6 +87,12 @@ arch_cpu_init(kernel_args *args)
+ 		cpu->topology_id[CPU_TOPOLOGY_CORE] = i;
+ 		cpu->topology_id[CPU_TOPOLOGY_SMT] = 0;
+ 	}
++
++	if (args->arch_args.psci_available != 0) {
++		sPsciUseHvc = args->arch_args.psci_use_hvc != 0;
++		gARM64ShutdownFn = arm64_psci_shutdown;
++	}
++
+ 	return B_OK;
+ }
+ 

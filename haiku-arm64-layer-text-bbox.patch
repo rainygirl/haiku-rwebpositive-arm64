@@ -1,0 +1,155 @@
+Two app_server fixes that make CSS opacity work
+
+1. BoundingBoxCallbacks::SetFontShear takes the wrong units
+
+A BPicture stores the font shear as (degrees - 90) in radians:
+
+    WriteSetFontShear((font.Shear() - 90) * (M_PI / 180))   ServerPicture.cpp
+
+so a font with no shear at all is stored as 0.0. CanvasCallbacks::SetFontShear
+converts it back; BoundingBoxCallbacks::SetFontShear did not, and set the draw
+state's font to a shear of 0 degrees. ServerFont::EmbeddedTransformation then
+computes
+
+    transform.ShearBy(B_ORIGIN, (90.0 - 0) * M_PI / 180.0, 0.0)
+
+which is tan(pi/2) = 1.6e16 in the matrix's shx. Every glyph x that comes out
+of the transform is then around 1e17 while y stays correct, because shx only
+feeds x:
+
+    *x = x * sx + y * shx + tx
+
+Measured in the guest, with the transform printed straight out of
+ServerFont::EmbeddedTransformation:
+
+    VPROBE shear=0 rot=0 size=20000 -> sx=1000 shy=0 shx=huge sy=1000
+    VPROBE   raw2 x=59 y=-93      the serialized glyph vertex, fine
+    VPROBE   cv2  x=0.921 y=-1.453    after conv_curve, still fine
+    VPROBE   to2  x=-2.3e17 y=-1.453  after conv_transform
+
+The first two vertices of a glyph survive because they sit on the baseline,
+where y is 0 and shx has nothing to multiply.
+
+2. BoundingBoxCallbacks::DrawStringLocations was an empty "// TODO"
+
+Every other drawing command contributes to the bounding box a BPicture is
+measured with; this one contributed nothing.
+
+That matters for layers. BView::BeginLayer records into a picture, and
+Layer::RenderToBitmap measures that picture with PictureBoundingBoxPlayer to
+decide how large a bitmap to render it into. If the box comes out invalid,
+RenderToBitmap returns NULL and Canvas::BlendLayer returns without drawing
+anything at all.
+
+WebKit draws all of its text through
+BView::DrawString(const char*, const BPoint[], int32) -- FontHaiku.cpp builds
+an offset per glyph and calls that -- and CSS opacity below 1 is implemented
+with BeginLayer. So in WebPositive every element with opacity < 1 disappeared:
+a layer holding only text got an invalid box and was dropped whole, and a
+layer holding text plus one other shape got a box covering only the shape.
+example.com is the second case; its <div> has opacity 0.8, and all that
+appeared was the underline of the link.
+
+Neither of these is arm64-specific. They are only conspicuous here because
+this port has no other browser to notice them with, and the first one hides
+the second: without the shear fix, ServerFont::GetBoundingBoxes returns a
+garbage "left" and the exact per-glyph boxes this implementation uses cannot
+be trusted.
+
+Verified in WebPositive on arm64: a page of divs at opacity 1, 0.99, 0.8 and
+0.5 draws all four rows at the right shades, and example.com renders its
+heading, body text and link. Without these, only the link underline appears.
+See screenshots/css-opacity-layers.png and
+screenshots/example-com-opacity-fixed.png.
+
+--- a/src/servers/app/PictureBoundingBoxPlayer.cpp
++++ b/src/servers/app/PictureBoundingBoxPlayer.cpp
+@@ -12,6 +12,7 @@
+ #include "PictureBoundingBoxPlayer.h"
+ 
+ #include <new>
++#include <math.h>
+ #include <stdio.h>
+ 
+ #include "DrawState.h"
+@@ -697,7 +698,16 @@ void
+ BoundingBoxCallbacks::SetFontShear(float shear)
+ {
+ 	ServerFont font;
+-	font.SetShear(shear);
++	// The picture stores the shear as (degrees - 90) in radians -- see
++	// PictureDataWriter's WriteSetFontShear in ServerPicture.cpp -- so a font
++	// with no shear at all arrives here as 0.0. Setting that as the shear in
++	// degrees, which is what this used to do, leaves the draw state's font at
++	// 0 degrees, and ServerFont::EmbeddedTransformation then computes
++	// tan((90 - 0) degrees), which is 1.6e16. Every glyph x coordinate in the
++	// bounding box comes out around 1e17 after that, while y stays correct,
++	// because the skew only feeds x. CanvasCallbacks::SetFontShear already
++	// converts; this is the same conversion.
++	font.SetShear(shear * (180 / M_PI) + 90);
+ 	fState->GetDrawState()->SetFont(font, B_FONT_SHEAR);
+ }
+ 
+@@ -895,9 +905,60 @@ void
+ BoundingBoxCallbacks::DrawStringLocations(const char* string, size_t length,
+ 	const BPoint locations[], size_t locationCount)
+ {
+-	// TODO
+-}
++	TRACE_BB("%p string locations (%ld locations)\n", fState, locationCount);
++
++	// Without this, text drawn with per-glyph locations contributes nothing to
++	// a layer's bounding box. A layer holding only such text then gets an
++	// invalid box, Layer::RenderToBitmap returns NULL, and the whole layer is
++	// dropped; a layer holding text plus one other shape gets a box covering
++	// only the shape. That is what made every element with opacity < 1
++	// invisible in WebPositive, which draws all of its text through
++	// BView::DrawString(const char*, const BPoint[], int32).
++
++	if (locationCount == 0 || string == NULL || length == 0)
++		return;
++
++	ServerFont font = fState->GetDrawState()->Font();
++
++	int32 numChars = (int32)locationCount;
++	BStackOrHeapArray<BRect, 64> boxes(numChars);
++	if (!boxes.IsValid())
++		return;
+ 
++	// A glyph with no outline -- a space -- is reported through
++	// ConsumeEmptyGlyph, which writes nothing into the array, so the entries
++	// have to start out recognisably empty or the union picks up whatever the
++	// stack held.
++	for (int32 i = 0; i < numChars; i++)
++		boxes[i] = BRect(0, 0, -1, -1);
++
++	escapement_delta delta = { 0.0, 0.0 };
++	if (font.GetBoundingBoxes(string, (int32)length, numChars, boxes, false,
++			B_SCREEN_METRIC, delta, false) != B_OK) {
++		return;
++	}
++
++	// The boxes come back relative to each glyph's own origin.
++	BRect rect(0, 0, -1, -1);
++	for (int32 i = 0; i < numChars; i++) {
++		if (!boxes[i].IsValid())
++			continue;
++		BRect box = boxes[i].OffsetByCopy(locations[i]);
++		rect = rect.IsValid() ? (rect | box) : box;
++	}
++	if (!rect.IsValid())
++		return;
++
++	// A pixel of slack for antialiasing, which reaches outside the glyph box.
++	rect.InsetBy(-1, -1);
++
++	fState->PenToLocalTransform().Apply(&rect);
++	fState->IncludeRect(rect);
++
++	BPoint location = locations[locationCount - 1];
++	fState->PenToLocalTransform().Apply(&location);
++	fState->GetDrawState()->SetPenLocation(location);
++}
+ 
+ void
+ BoundingBoxCallbacks::SetFillRule(int32 fillRule)

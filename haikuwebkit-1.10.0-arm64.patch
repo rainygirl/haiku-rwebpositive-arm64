@@ -1,0 +1,810 @@
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/JavaScriptCore/assembler/ARM64Assembler.h haikuwebkit/Source/JavaScriptCore/assembler/ARM64Assembler.h
+--- orig/haikuwebkit/Source/JavaScriptCore/assembler/ARM64Assembler.h	2026-05-19 16:50:58.158597200 +0000
++++ haikuwebkit/Source/JavaScriptCore/assembler/ARM64Assembler.h	2026-09-02 09:49:26.000000000 +0000
+@@ -4011,7 +4011,9 @@
+     
+     unsigned debugOffset() { return m_buffer.debugOffset(); }
+ 
+-#if OS(LINUX)
++#if OS(LINUX) || OS(HAIKU)
++    // Haiku: __builtin___clear_cache is user-space (dc cvau / ic ivau) on
++    // AArch64, so the Linux page-by-page flush works unchanged.
+     static inline void linuxPageFlush(uintptr_t begin, uintptr_t end)
+     {
+         __builtin___clear_cache(reinterpret_cast<char*>(begin), reinterpret_cast<char*>(end));
+@@ -4024,7 +4026,7 @@
+         sys_icache_invalidate(code, size);
+ #elif OS(FUCHSIA)
+         zx_cache_flush(code, size, ZX_CACHE_FLUSH_INSN);
+-#elif OS(LINUX)
++#elif OS(LINUX) || OS(HAIKU)
+         size_t page = pageSize();
+         uintptr_t current = reinterpret_cast<uintptr_t>(code);
+         uintptr_t end = current + size;
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/JavaScriptCore/bytecode/InlineCacheCompiler.h haikuwebkit/Source/JavaScriptCore/bytecode/InlineCacheCompiler.h
+--- orig/haikuwebkit/Source/JavaScriptCore/bytecode/InlineCacheCompiler.h	2026-05-19 16:50:58.229376000 +0000
++++ haikuwebkit/Source/JavaScriptCore/bytecode/InlineCacheCompiler.h	2026-09-02 23:51:01.000000000 +0000
+@@ -28,6 +28,7 @@
+ #if ENABLE(JIT)
+ 
+ #include "AccessCase.h"
++#include "CCallHelpers.h"
+ #include "InlineCacheHandler.h"
+ #include "JITStubRoutine.h"
+ #include "JSFunctionInlines.h"
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/__init__.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/__init__.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/cpp_generator.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/cpp_generator.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/cpp_generator_templates.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/cpp_generator_templates.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_alternate_backend_dispatcher_header.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_alternate_backend_dispatcher_header.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_backend_dispatcher_header.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_backend_dispatcher_header.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_backend_dispatcher_implementation.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_backend_dispatcher_implementation.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_frontend_dispatcher_header.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_frontend_dispatcher_header.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_frontend_dispatcher_implementation.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_frontend_dispatcher_implementation.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_protocol_types_header.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_protocol_types_header.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_protocol_types_implementation.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_cpp_protocol_types_implementation.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_js_backend_commands.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_js_backend_commands.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_backend_dispatcher_header.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_backend_dispatcher_header.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_backend_dispatcher_implementation.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_backend_dispatcher_implementation.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_configuration_header.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_configuration_header.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_configuration_implementation.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_configuration_implementation.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_frontend_dispatcher_implementation.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_frontend_dispatcher_implementation.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_header.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_header.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_internal_header.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_internal_header.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_protocol_type_conversions_header.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_protocol_type_conversions_header.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_protocol_type_conversions_implementation.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_protocol_type_conversions_implementation.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_protocol_types_implementation.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generate_objc_protocol_types_implementation.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generator.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generator.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generator_templates.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/generator_templates.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/models.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/models.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/objc_generator.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/objc_generator.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/objc_generator_templates.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/inspector/scripts/codegen/__pycache__/objc_generator_templates.cpython-310.pyc differ
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/JavaScriptCore/offlineasm/arm64.rb haikuwebkit/Source/JavaScriptCore/offlineasm/arm64.rb
+--- orig/haikuwebkit/Source/JavaScriptCore/offlineasm/arm64.rb	2026-05-01 15:18:56.279445400 +0000
++++ haikuwebkit/Source/JavaScriptCore/offlineasm/arm64.rb	2026-09-02 09:52:41.000000000 +0000
+@@ -1458,8 +1458,8 @@
+             $asm.puts "ldr #{operands[1].arm64Operand(:quad)}, [#{operands[1].arm64Operand(:quad)}, #{operands[0].asmLabel}@GOTPAGEOFF]"
+             $asm.putStr("#endif")
+ 
+-            # On Linux, use ELF GOT relocation specifiers.
+-            $asm.putStr("#elif OS(LINUX)")
++            # On Linux and Haiku (both ELF, GNU as), use ELF GOT relocation specifiers.
++            $asm.putStr("#elif OS(LINUX) || OS(HAIKU)")
+ 
+             $asm.puts "adrp #{operands[1].arm64Operand(:quad)}, :got:#{operands[0].asmLabel}"
+             $asm.putStr("#if CPU(ADDRESS32)")
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/JavaScriptCore/runtime/MachineContext.h haikuwebkit/Source/JavaScriptCore/runtime/MachineContext.h
+--- orig/haikuwebkit/Source/JavaScriptCore/runtime/MachineContext.h	2026-03-09 16:52:07.500695000 +0000
++++ haikuwebkit/Source/JavaScriptCore/runtime/MachineContext.h	2026-09-02 07:25:43.496283007 +0000
+@@ -152,6 +152,8 @@
+ #elif OS(HAIKU)
+ #if CPU(X86_64)
+     return reinterpret_cast<void*&>(machineContext.rsp);
++#elif CPU(ARM64)
++    return reinterpret_cast<void*&>((uintptr_t&) machineContext.sp);
+ #else
+ #error Unknown Architecture
+ #endif
+@@ -281,6 +283,8 @@
+ #elif OS(HAIKU)
+ #if CPU(X86_64)
+     return reinterpret_cast<void*&>(machineContext.rbp);
++#elif CPU(ARM64)
++    return reinterpret_cast<void*&>((uintptr_t&) machineContext.x[29]);
+ #else
+ #error Unknown Architecture
+ #endif
+@@ -441,6 +445,8 @@
+ #elif OS(HAIKU)
+ #if CPU(X86_64)
+     return reinterpret_cast<void*&>((uintptr_t&) machineContext.rip);
++#elif CPU(ARM64)
++    return reinterpret_cast<void*&>((uintptr_t&) machineContext.elr);
+ #else
+ #error Unknown Architecture
+ #endif
+@@ -617,6 +623,8 @@
+ #elif OS(HAIKU)
+ #if CPU(X86_64)
+     return reinterpret_cast<void*&>((uintptr_t&) machineContext.rsi);
++#elif CPU(ARM64)
++    return reinterpret_cast<void*&>((uintptr_t&) machineContext.x[1]);
+ #else
+ #error Unknown Architecture
+ #endif
+@@ -682,6 +690,8 @@
+ #error Unsupported Architecture
+ #elif CPU(X86_64)
+     return reinterpret_cast<void*&>((uintptr_t&) machineContext.rbx);
++#elif CPU(ARM64)
++    return reinterpret_cast<void*&>((uintptr_t&) machineContext.x[19]);
+ #else
+ #error Unknown Architecture
+ #endif
+@@ -802,6 +812,8 @@
+ #elif OS(HAIKU)
+ #if CPU(X86_64)
+     return reinterpret_cast<void*&>((uintptr_t&) machineContext.r8);
++#elif CPU(ARM64)
++    return reinterpret_cast<void*&>((uintptr_t&) machineContext.x[4]);
+ #else
+ #error Unknown Architecture
+ #endif
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/JavaScriptCore/runtime/ScriptExecutable.cpp haikuwebkit/Source/JavaScriptCore/runtime/ScriptExecutable.cpp
+--- orig/haikuwebkit/Source/JavaScriptCore/runtime/ScriptExecutable.cpp	2026-05-01 15:18:56.701235300 +0000
++++ haikuwebkit/Source/JavaScriptCore/runtime/ScriptExecutable.cpp	2026-09-03 02:18:12.000000000 +0000
+@@ -26,6 +26,7 @@
+ #include "config.h"
+ 
+ #include "CodeBlock.h"
++#include "CompilationResult.h"
+ #include "Debugger.h"
+ #include "EvalCodeBlock.h"
+ #include "FunctionCodeBlock.h"
+Binary files orig/haikuwebkit/Source/JavaScriptCore/wasm/__pycache__/generateWasm.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/wasm/__pycache__/generateWasm.cpython-310.pyc differ
+Binary files orig/haikuwebkit/Source/JavaScriptCore/yarr/__pycache__/hasher.cpython-310.pyc and haikuwebkit/Source/JavaScriptCore/yarr/__pycache__/hasher.cpython-310.pyc differ
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WTF/wtf/PlatformEnable.h haikuwebkit/Source/WTF/wtf/PlatformEnable.h
+--- orig/haikuwebkit/Source/WTF/wtf/PlatformEnable.h	2026-07-10 20:03:23.965738500 +0000
++++ haikuwebkit/Source/WTF/wtf/PlatformEnable.h	2026-09-02 23:17:46.000000000 +0000
+@@ -788,7 +788,7 @@
+ #define ENABLE_DFG_JIT 1
+ #endif
+ 
+-#if CPU(ARM64) && (OS(DARWIN) || OS(LINUX) || OS(FREEBSD))
++#if CPU(ARM64) && (OS(DARWIN) || OS(LINUX) || OS(FREEBSD) || OS(HAIKU))
+ #define ENABLE_DFG_JIT 1
+ #endif
+ 
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WTF/wtf/PlatformHaiku.cmake haikuwebkit/Source/WTF/wtf/PlatformHaiku.cmake
+--- orig/haikuwebkit/Source/WTF/wtf/PlatformHaiku.cmake	2026-07-22 18:10:15.787480600 +0000
++++ haikuwebkit/Source/WTF/wtf/PlatformHaiku.cmake	2026-09-02 07:25:43.549283007 +0000
+@@ -34,8 +34,8 @@
+ )
+ 
+ list(APPEND WTF_INCLUDE_DIRECTORIES
+-    /system/develop/headers/private/system/arch/$ENV{BE_HOST_CPU}/
+-    /system/develop/headers/private/system
++    ${HAIKU_SYSTEM_DIR}/develop/headers/private/system/arch/$ENV{BE_HOST_CPU}/
++    ${HAIKU_SYSTEM_DIR}/develop/headers/private/system
+ )
+ 
+ add_definitions(-D_DEFAULT_SOURCE)
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WTF/wtf/haiku/RunLoopHaiku.cpp haikuwebkit/Source/WTF/wtf/haiku/RunLoopHaiku.cpp
+--- orig/haikuwebkit/Source/WTF/wtf/haiku/RunLoopHaiku.cpp	2026-07-22 18:10:15.790102000 +0000
++++ haikuwebkit/Source/WTF/wtf/haiku/RunLoopHaiku.cpp	2026-09-05 16:48:41.742803009 +0000
+@@ -151,11 +151,20 @@
+         m_messageRunner = nullptr;
+     }
+ 
+-    BMessage* message = new BMessage('tmrf');
+-    message->AddPointer("timer", this);
++    // BMessageRunner takes a const BMessage* and flattens it into the
++    // request it sends the registrar: it copies, it does not adopt. The
++    // message allocated here with new was therefore never freed, and
++    // start() is not a rare call -- WebCore re-arms its shared timer every
++    // time it schedules anything, so a page with an animation on it went
++    // through here tens of times a second. Each pass leaked the BMessage
++    // and the field storage behind its one pointer, which added up to tens
++    // of megabytes a minute and eventually filled the machine. A stack
++    // message copies just the same and leaves nothing behind.
++    BMessage message('tmrf');
++    message.AddPointer("timer", this);
+ 
+     m_messageRunner = new BMessageRunner(m_runLoop->m_handler,
+-        message, nextFireInterval.microseconds(), repeat ? -1 : 1);
++        &message, nextFireInterval.microseconds(), repeat ? -1 : 1);
+ }
+ 
+ bool RunLoop::TimerBase::isActive() const
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/CMakeLists.txt haikuwebkit/Source/WebCore/CMakeLists.txt
+--- orig/haikuwebkit/Source/WebCore/CMakeLists.txt	2026-07-10 20:03:23.980156400 +0000
++++ haikuwebkit/Source/WebCore/CMakeLists.txt	2026-09-02 07:25:43.565283007 +0000
+@@ -2268,7 +2268,9 @@
+ elseif (USE_LIBEPOXY)
+     list(APPEND WebCore_LIBRARIES Epoxy::Epoxy)
+ else ()
+-    list(APPEND WebCore_LIBRARIES OpenGL::GLES)
++    if (TARGET OpenGL::GLES)
++        list(APPEND WebCore_LIBRARIES OpenGL::GLES)
++    endif ()
+ 
+     list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
+         ${EGL_INCLUDE_DIRS}
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/PlatformHaiku.cmake haikuwebkit/Source/WebCore/PlatformHaiku.cmake
+--- orig/haikuwebkit/Source/WebCore/PlatformHaiku.cmake	2026-07-22 18:10:15.792199100 +0000
++++ haikuwebkit/Source/WebCore/PlatformHaiku.cmake	2026-09-02 13:32:05.000000000 +0000
+@@ -10,6 +10,15 @@
+ # Enable all GNU and BSD extensions
+ add_definitions(-D_DEFAULT_SOURCE)
+ 
++# WebCore's unified sources take over 2 GB each with gcc at -O3 on arm64,
++# which is more than a modest cross-build box can give several compilers at
++# once. -O2 costs little at run time and noticeably less memory to compile.
++# This is directory-scoped, so JavaScriptCore and WTF keep -O3.
++if (CMAKE_COMPILER_IS_GNUCXX)
++    string(REPLACE "-O3" "-O2" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
++    string(REPLACE "-O3" "-O2" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
++endif ()
++
+ if(USE_CURL)
+   include(platform/Curl.cmake)
+   list(APPEND WebCore_SOURCES
+@@ -49,7 +58,7 @@
+ 
+ list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
+     ${WEBCORE_DIR}/platform/video-codecs
+-    /system/develop/headers/private/netservices
++    ${HAIKU_SYSTEM_DIR}/develop/headers/private/netservices
+ )
+ 
+ list(APPEND WebCore_INCLUDE_DIRECTORIES
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/platform/graphics/PlatformDisplay.cpp haikuwebkit/Source/WebCore/platform/graphics/PlatformDisplay.cpp
+--- orig/haikuwebkit/Source/WebCore/platform/graphics/PlatformDisplay.cpp	2026-01-12 16:58:33.700186700 +0000
++++ haikuwebkit/Source/WebCore/platform/graphics/PlatformDisplay.cpp	2026-09-02 11:18:02.000000000 +0000
+@@ -40,6 +40,10 @@
+ #if USE(LIBEPOXY)
+ #include <epoxy/egl.h>
+ #else
++#if PLATFORM(HAIKU)
++// Keep eglplatform.h from pulling in X11 headers.
++#define EGL_NO_X11
++#endif
+ #include <EGL/egl.h>
+ #include <EGL/eglext.h>
+ #endif
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/platform/graphics/egl/GLContext.h haikuwebkit/Source/WebCore/platform/graphics/egl/GLContext.h
+--- orig/haikuwebkit/Source/WebCore/platform/graphics/egl/GLContext.h	2026-05-19 16:51:00.391905300 +0000
++++ haikuwebkit/Source/WebCore/platform/graphics/egl/GLContext.h	2026-09-02 11:18:02.000000000 +0000
+@@ -26,6 +26,9 @@
+ #include <wtf/ThreadSafeWeakPtr.h>
+ 
+ #if !PLATFORM(GTK) && !PLATFORM(WPE)
++#if PLATFORM(HAIKU)
++#define EGL_NO_X11
++#endif
+ #include <EGL/eglplatform.h>
+ typedef EGLNativeWindowType GLNativeWindowType;
+ #else
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/platform/graphics/haiku/FontCacheHaiku.cpp haikuwebkit/Source/WebCore/platform/graphics/haiku/FontCacheHaiku.cpp
+--- orig/haikuwebkit/Source/WebCore/platform/graphics/haiku/FontCacheHaiku.cpp	2026-01-20 17:00:43.029360000 +0000
++++ haikuwebkit/Source/WebCore/platform/graphics/haiku/FontCacheHaiku.cpp	2026-09-03 13:01:17.000000000 +0000
+@@ -36,6 +36,8 @@
+ #include "Font.h"
+ #include "FontPlatformData.h"
+ #include "NotImplemented.h"
++#include <wtf/UniqueArray.h>
++#include <unicode/utf16.h>
+ #include "Font.h"
+ #include <Font.h>
+ #include <String.h>
+@@ -50,12 +52,57 @@
+ 
+ RefPtr<Font> FontCache::systemFallbackForCharacterCluster(const FontDescription& description,
+ 	const Font& /*originalFontData*/, WebCore::IsForPlatformFont,
+-	WebCore::FontCache::PreferColoredFont, StringView)
++	WebCore::FontCache::PreferColoredFont, StringView stringView)
+ {
++    // This is the hook WebKit calls when the font chosen for a run has no
++    // glyph for some character. Returning "Sans" unconditionally -- which is
++    // what this did before -- means every character outside that one family's
++    // coverage is drawn as a .notdef box, however many suitable fonts are
++    // installed: all of CJK, for one. Ask app_server which installed family
++    // can draw the cluster instead.
++    if (!stringView.isEmpty()) {
++        CString utf8 = stringView.utf8();
++        int32 characterCount = 0;
++        for (unsigned i = 0; i < stringView.length(); ++i) {
++            if (!U16_IS_TRAIL(stringView[i]))
++                characterCount++;
++        }
++        if (characterCount > 0) {
++            auto hasGlyphs = makeUniqueArray<bool>(characterCount);
++            int32 familyCount = count_font_families();
++            for (int32 i = 0; i < familyCount; i++) {
++                font_family family;
++                uint32 flags;
++                if (get_font_family(i, &family, &flags) != B_OK)
++                    continue;
++
++                BFont font;
++                if (font.SetFamilyAndStyle(family, NULL) != B_OK)
++                    continue;
++
++                for (int32 c = 0; c < characterCount; c++)
++                    hasGlyphs[c] = false;
++                font.GetHasGlyphs(utf8.data(), characterCount, hasGlyphs.get());
++
++                bool complete = true;
++                for (int32 c = 0; c < characterCount; c++) {
++                    if (!hasGlyphs[c]) {
++                        complete = false;
++                        break;
++                    }
++                }
++                if (!complete)
++                    continue;
++
++                FontPlatformData data(description, AtomString::fromUTF8(family));
++                if (RefPtr<Font> result = fontForPlatformData(data))
++                    return result;
++            }
++        }
++    }
++
++    // Nothing installed covers it; the caller still needs a font.
+     FontPlatformData data(description, AtomString::fromUTF8("Sans"));
+-        // FIXME check that the requested characters are actually available,
+-        // and try to use the other info in the arguments (should this be
+-        // monospace, etc)
+     return fontForPlatformData(data);
+ }
+ 
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/platform/graphics/haiku/PathHaiku.cpp haikuwebkit/Source/WebCore/platform/graphics/haiku/PathHaiku.cpp
+--- orig/haikuwebkit/Source/WebCore/platform/graphics/haiku/PathHaiku.cpp	2026-01-20 17:00:43.106954800 +0000
++++ haikuwebkit/Source/WebCore/platform/graphics/haiku/PathHaiku.cpp	2026-09-05 17:33:50.688973013 +0000
+@@ -37,6 +37,8 @@
+ #include "NotImplemented.h"
+ #include "PlatformImage.h"
+ #include "TransformationMatrix.h"
++#include <wtf/TZoneMallocInlines.h>
++
+ #include <Bitmap.h>
+ #include <Shape.h>
+ #include <View.h>
+@@ -45,6 +47,8 @@
+ 
+ namespace WebCore {
+ 
++WTF_MAKE_TZONE_ALLOCATED_IMPL(PathHaiku);
++
+ // A one pixel sized BBitmap for drawing into. Default high-color of BViews
+ // is black. So testing of any color channel for < 128 means the pixel was hit.
+ class HitTestBitmap {
+@@ -184,6 +188,11 @@
+     : m_platformPath(platformPath)
+     , m_elementsStream(std::move(elementsStream))
+ {
++    // This constructor did not take the reference the destructor gives back.
++    // It never showed because ~PathHaiku was not being called at all; with
++    // that fixed, the count would go negative and the shared hit-test bitmap
++    // would be torn down while paths were still using it.
++    gHitTestBitmap.addReference();
+ }
+ 
+ 
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/platform/graphics/haiku/PathHaiku.h haikuwebkit/Source/WebCore/platform/graphics/haiku/PathHaiku.h
+--- orig/haikuwebkit/Source/WebCore/platform/graphics/haiku/PathHaiku.h	2026-01-20 17:00:43.112984200 +0000
++++ haikuwebkit/Source/WebCore/platform/graphics/haiku/PathHaiku.h	2026-09-05 17:33:50.687973013 +0000
+@@ -37,6 +37,21 @@
+ class GraphicsContext;
+ 
+ class PathHaiku final: public PathImpl {
++    // Both of these have to be on the most derived class, and PathHaiku was
++    // the only PathImpl in the tree without them -- PathStream, PathCairo and
++    // PathSkia all carry the pair.
++    //
++    // The second one is what mattered. WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR on
++    // PathImpl defines a destroying operator delete whose body is
++    // "object->PathImpl::~PathImpl()": a qualified, non-virtual call. So
++    // deleting a PathHaiku through a PathImpl* ran the base destructor, freed
++    // the memory, and never ran ~PathHaiku -- which meant the BShape member
++    // was never destroyed and the point and operation arrays it had malloc'd
++    // (a kilobyte or three per path) stayed behind. WebKit builds a Path for
++    // every rounded-rect clip, so a page with border-radius on anything that
++    // repaints leaked a few thousand of those a second.
++    WTF_MAKE_TZONE_ALLOCATED(PathHaiku);
++    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(PathHaiku);
+ public:
+     static Ref<PathHaiku> create(std::span<const PathSegment> = { });
+     static Ref<PathHaiku> create(const PathSegment&);
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/platform/network/curl/CurlContext.cpp haikuwebkit/Source/WebCore/platform/network/curl/CurlContext.cpp
+--- orig/haikuwebkit/Source/WebCore/platform/network/curl/CurlContext.cpp	2026-07-10 20:03:24.413401100 +0000
++++ haikuwebkit/Source/WebCore/platform/network/curl/CurlContext.cpp	2026-09-05 04:58:14.074204014 +0000
+@@ -232,6 +232,16 @@
+ CurlMultiHandle::CurlMultiHandle()
+ {
+     m_multiHandle = curl_multi_init();
++
++    // Every https transfer is given CURLOPT_PIPEWAIT in enableHttp() when
++    // libcurl reports HTTP/2. PIPEWAIT tells curl to hold a transfer back so
++    // it can share an existing connection -- but curl only ever multiplexes
++    // when the multi handle asks for it, and nothing here did. The result was
++    // transfers waiting for a connection that would never be shared: with
++    // HTTP/2 available, pages stopped loading at "Requesting" and never
++    // finished. Turning multiplexing on is both the fix and the point of
++    // HTTP/2: one connection per host carrying every request.
++    curl_multi_setopt(m_multiHandle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
+ }
+ 
+ CurlMultiHandle::~CurlMultiHandle()
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/platform/network/curl/CurlRequestScheduler.cpp haikuwebkit/Source/WebCore/platform/network/curl/CurlRequestScheduler.cpp
+--- orig/haikuwebkit/Source/WebCore/platform/network/curl/CurlRequestScheduler.cpp	2026-05-19 16:51:00.480247700 +0000
++++ haikuwebkit/Source/WebCore/platform/network/curl/CurlRequestScheduler.cpp	2026-09-05 03:48:26.519906006 +0000
+@@ -244,28 +244,46 @@
+ 
+ void CurlRequestScheduler::finalizeTransfer(CurlRequestSchedulerClient* client, Function<void()> completionHandler)
+ {
+-    Locker locker { m_mutex };
++    {
++        Locker locker { m_mutex };
+ 
+-    if (!m_activeJobs.contains(client))
+-        return;
++        if (!m_activeJobs.contains(client))
++            return;
+ 
+-    m_activeJobs.remove(client);
++        m_activeJobs.remove(client);
+ 
+-    auto task = [this, client, completionHandler = WTF::move(completionHandler)]() {
+-        if (client->handle()) {
+-            ASSERT(m_clientMaps.contains(client->handle()));
+-            m_clientMaps.remove(client->handle());
+-            m_curlMultiHandle->removeHandle(client->handle());
+-        }
+-
+-        completionHandler();
+-
+-        callOnMainThread([client]() {
+-            client->release();
+-        });
+-    };
+-
+-    m_taskQueue.append(WTF::move(task));
++        auto task = [this, client, completionHandler = WTF::move(completionHandler)]() {
++            if (client->handle()) {
++                ASSERT(m_clientMaps.contains(client->handle()));
++                m_clientMaps.remove(client->handle());
++                m_curlMultiHandle->removeHandle(client->handle());
++            }
++
++            completionHandler();
++
++            callOnMainThread([client]() {
++                client->release();
++            });
++        };
++
++        m_taskQueue.append(WTF::move(task));
++    }
++
++    // The worker thread sits in curl_multi_poll() with an infinite timeout, so
++    // a task queued from another thread is only picked up once something wakes
++    // it. add() knows that and calls startOrWakeUpThread(); this path did not.
++    //
++    // It matters because cancelTransfer() comes through here from the main
++    // thread, and navigating away from a page cancels every load the old page
++    // still has outstanding. With the old page's connections idle -- nothing
++    // arriving to wake the poll -- those cancels sat in the queue, and the
++    // navigation waited behind them. From the outside the address bar showed
++    // "Requesting" for as long as a minute with no socket to the new host open
++    // at all, until unrelated traffic on the old page happened to wake the
++    // thread. Leaving one busy news site for another did it every time.
++    //
++    // Outside the lock: wakeUpThreadIfPossible() takes m_multiHandleMutex.
++    wakeUpThreadIfPossible();
+ }
+ 
+ }
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/PlatformHaiku.cmake haikuwebkit/Source/WebKitLegacy/PlatformHaiku.cmake
+--- orig/haikuwebkit/Source/WebKitLegacy/PlatformHaiku.cmake	2026-04-05 09:32:26.466616400 +0000
++++ haikuwebkit/Source/WebKitLegacy/PlatformHaiku.cmake	2026-09-02 07:25:43.591283007 +0000
+@@ -24,7 +24,7 @@
+     "${SQLITE_INCLUDE_DIR}"
+     "${CMAKE_BINARY_DIR}"
+     "${FORWARDING_HEADERS_DIR}"
+-    /system/develop/headers/private/netservices
++    ${HAIKU_SYSTEM_DIR}/develop/headers/private/netservices
+ )
+ 
+ # These folders have includes with the same name as Haiku system ones. So we
+@@ -108,7 +108,7 @@
+     ${PNG_LIBRARY}
+     ${JPEG_LIBRARY}
+     ${CMAKE_DL_LIBS}
+-    be bnetapi GL shared translation tracker
++    be bnetapi shared translation tracker
+     WebCore PAL WTF
+ )
+ 
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp
+--- orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp	2026-01-20 17:00:44.531890200 +0000
++++ haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp	2026-09-05 14:52:47.261550013 +0000
+@@ -450,8 +450,12 @@
+     data->frame->init();
+ 
+     // The creation of the frame may have run arbitrary JavaScript that removed
+-    // it from the page already.
++    // it from the page already. Nothing else has a pointer to this BWebFrame
++    // yet, so this is the one place that can still free it; returning without
++    // doing so leaked the frame, its WebFramePrivate and the LocalFrame the
++    // RefPtr in it holds.
+     if (!data->frame->page()) {
++        delete frame;
+         return nullptr;
+     }
+     return frame;
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp
+--- orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp	2026-05-19 16:51:01.313786300 +0000
++++ haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp	2026-09-05 18:20:51.078234002 +0000
+@@ -29,6 +29,14 @@
+ 
+ #include "config.h"
+ #include "WebPage.h"
++#include <WebCore/MemoryRelease.h>
++#include <wtf/FastMalloc.h>
++#include <wtf/MemoryPressureHandler.h>
++#include <wtf/RunLoop.h>
++#include <OS.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
+ 
+ #include "BackForwardList.h"
+ #include "ChromeClientHaiku.h"
+@@ -78,7 +86,11 @@
+ #include "WebCore/LocalFrameView.h"
+ #include "WebCore/LocalFrameInlines.h"
+ #include "WebCore/LogInitialization.h"
++#include "WebCore/CommonVM.h"
++#include "WebCore/Document.h"
+ #include "WebCore/MemoryCache.h"
++#include <JavaScriptCore/Heap.h>
++#include <JavaScriptCore/VM.h>
+ #include "WebNavigatorContentUtilsClient.h"
+ #include "WebCore/MHTMLArchive.h"
+ #include "WebCore/Page.h"
+@@ -224,7 +236,77 @@
+ 
+     WTF::listenForLanguageChangeNotifications();
+ 
++    // RunLoop::run() has to come first. RunLoop::TimerBase::start() arms a
++    // BMessageRunner aimed at the run loop's BHandler, and a BMessageRunner
++    // whose target handler has no looper yet never delivers anything -- it
++    // fails silently at construction. run() is what adds that handler to
++    // be_app, so a timer started before it is simply dead, which is what
++    // happened to the memory check below when it was written the other way
++    // round. run() returns immediately here because be_app already owns the
++    // thread.
+     RunLoop::run(); // This attaches it to the existing be_app looper
++
++    // Tell WebKit when the machine is running out of memory, so it drops what
++    // it can. Nothing on this port did, and WebKit only prunes when it is
++    // asked: MemoryCache keeps its 32 MB, decoded images stay decoded, and the
++    // JavaScript heap is never collected early. On a 2 GB guest an afternoon
++    // on image-heavy pages fills memory, and once it is full everything
++    // crawls -- app_server cannot get buffers either, so windows come up
++    // black. This is the part WebKit expects the port to provide.
++    //
++    // The Unix handler polls /proc, which does not exist here, so the check is
++    // done from a timer against get_system_info(). Two thresholds: below 25%
++    // free, ask for the cheap release; below 12%, the critical one, which also
++    // drops the memory cache and collects the JS heap.
++    static RunLoop::Timer* memoryCheck = new RunLoop::Timer(RunLoop::mainSingleton(),
++        "MemoryPressureCheck"_s, [] {
++            system_info info;
++            if (get_system_info(&info) != B_OK)
++                return;
++            double free = 1.0 - double(info.used_pages) / double(info.max_pages);
++            auto& handler = MemoryPressureHandler::singleton();
++            if (free < 0.12) {
++                handler.setMemoryPressureStatus(SystemMemoryPressureStatus::Critical);
++                WebCore::releaseMemory(Critical::Yes, Synchronous::No);
++            } else if (free < 0.25) {
++                handler.setMemoryPressureStatus(SystemMemoryPressureStatus::Warning);
++                WebCore::releaseMemory(Critical::No, Synchronous::No);
++            } else
++                handler.setMemoryPressureStatus(SystemMemoryPressureStatus::Normal);
++
++            // Attribution for the growth that is left. Every counter here is
++            // one WebKit already keeps; printing them next to the system's
++            // idea of free memory is the only way to tell a cache that is
++            // meant to grow from something that is simply never freed.
++            if (getenv("WEBPOSITIVE_MEMSTATS") != NULL) {
++                auto fm = WTF::fastMallocStatistics();
++                auto& cache = MemoryCache::singleton();
++                auto stats = cache.getStatistics();
++                int live = stats.images.liveSize + stats.cssStyleSheets.liveSize
++                    + stats.scripts.liveSize + stats.xslStyleSheets.liveSize
++                    + stats.fonts.liveSize;
++                JSC::VM& vm = WebCore::commonVM();
++                size_t documents = 0;
++                for (auto& document : WebCore::Document::allDocuments()) {
++                    (void)document;
++                    documents++;
++                }
++                fprintf(stderr, "MEMSTATS free=%.0fMB fastmalloc=%.1f/%.1fMB"
++                    " memcache=%.1fMB(live %.1f) img=%d/%.1fMB(dec %.1f)"
++                    " js=%.1f/%.1fMB extra=%.1fMB docs=%zu\n",
++                    free * double(info.max_pages) * B_PAGE_SIZE / 1048576.0,
++                    fm.committedVMBytes / 1048576.0, fm.freeListBytes / 1048576.0,
++                    cache.size() / 1048576.0, live / 1048576.0,
++                    stats.images.count, stats.images.size / 1048576.0,
++                    stats.images.decodedSize / 1048576.0,
++                    vm.heap.size() / 1048576.0, vm.heap.capacity() / 1048576.0,
++                    vm.heap.extraMemorySize() / 1048576.0,
++                    documents);
++                fflush(stderr);
++            }
++
++        });
++    memoryCheck->startRepeating(5_s);
+ }
+ 
+ /*static*/ void BWebPage::ShutdownOnce()
+@@ -1008,12 +1090,26 @@
+         break;
+ 
+     case HANDLE_DRAW: {
+-        bool first = true;
++        // Collapse every other pending draw for this page into this one.
++        //
++        // BMessageQueue::RemoveMessage() hands ownership over, so each message
++        // taken out here has to be deleted here: the looper only ever deletes
++        // the message it dispatched. The previous version tried to, but its
++        // "first = false" sat inside "if (!first)", so it could never run --
++        // first stayed true, the delete never happened, and every collapsed
++        // draw message was leaked. On a page with anything moving on it that
++        // is a steady leak of the whole message with its fields, which is what
++        // made a browser left open on a news site swell by tens of megabytes a
++        // minute until the machine had no memory left. (The dead branch was
++        // also wrong in the other direction: had it ever run, the first time
++        // through it would have deleted the message the looper still owns.)
++        //
++        // Nothing is substituted for the dispatched message any more, so
++        // ownership stays where the looper expects it.
+         BMessageQueue* queue = Looper()->MessageQueue();
+         BRect updateRect;
+         message->FindRect("update rect", &updateRect);
+         int32 index = 0;
+-        // Collapse all next pending draw messages into one
+         while (BMessage* nextMessage = queue->FindMessage(message->what, index)) {
+             BHandler* target = 0;
+             nextMessage->FindPointer("target", reinterpret_cast<void**>(&target));
+@@ -1022,17 +1118,12 @@
+                 continue;
+             }
+ 
+-            if (!first) {
+-                delete message;
+-                first = false;
+-            }
+-
+-            message = nextMessage;
+-            queue->RemoveMessage(message);
++            queue->RemoveMessage(nextMessage);
+ 
+             BRect rect;
+-            message->FindRect("update rect", &rect);
+-            updateRect = updateRect | rect;
++            if (nextMessage->FindRect("update rect", &rect) == B_OK)
++                updateRect = updateRect | rect;
++            delete nextMessage;
+         }
+         paint(updateRect, false);
+         break;
+@@ -1134,8 +1225,12 @@
+ 	// need to be flagged with the intended target BWebPage,
+ 	// or else we steal or process messages intended for another
+ 	// BWebPage here!
+-    bool first = true;
++    // The last message found is copied over the dispatched one rather than
++    // substituted for it. Substituting leaked it: the looper deletes only the
++    // message it dispatched, so whatever was left in "message" at the end --
++    // taken out of the queue here, and owned here -- was never freed.
+     BMessageQueue* queue = Looper()->MessageQueue();
++    BMessage* last = NULL;
+     int32 index = 0;
+     while (BMessage* nextMessage = queue->FindMessage(message->what, index)) {
+     	BHandler* target = 0;
+@@ -1144,11 +1239,14 @@
+     		index++;
+     	    continue;
+     	}
+-        if (!first)
+-            delete message;
+-        message = nextMessage;
+-        queue->RemoveMessage(message);
+-        first = false;
++        queue->RemoveMessage(nextMessage);
++        delete last;
++        last = nextMessage;
++    }
++
++    if (last != NULL) {
++        *message = *last;
++        delete last;
+     }
+ }
+ 
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebSettings.cpp haikuwebkit/Source/WebKitLegacy/haiku/API/WebSettings.cpp
+--- orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebSettings.cpp	2026-01-20 17:00:44.546308000 +0000
++++ haikuwebkit/Source/WebKitLegacy/haiku/API/WebSettings.cpp	2026-09-04 16:52:13.253004000 +0000
+@@ -28,6 +28,8 @@
+ #include "config.h"
+ #include "WebSettings.h"
+ 
++#include <WebCore/CurlCacheManager.h>
++
+ #include "FrameNetworkingContextHaiku.h"
+ #include "IconDatabase.h"
+ 
+@@ -353,6 +355,20 @@
+ 
+ 	create_directory(storagePath.Path(), 0777);
+ 
++    // Turn on the HTTP disk cache. CurlCacheManager is fully wired into the
++    // loader -- ResourceHandle::addCacheValidationHeaders() asks it for
++    // validators and CurlResourceHandleDelegate feeds it every response --
++    // but its constructor starts disabled and it only switches on when
++    // someone names a directory, which nothing on this port did. Without it
++    // every visit refetches and re-decodes everything, which on a page like
++    // news.naver.com is about 6.5 MB and several hundred images.
++    {
++        BPath httpCachePath(storagePath);
++        httpCachePath.Append("Cache");
++        WebCore::CurlCacheManager::singleton().setCacheDirectory(
++            String::fromUTF8(httpCachePath.Path()));
++    }
++
+ 	_HandleSetIconDatabasePath(storagePath.Path());
+     _HandleSetWebApplicationCachePath(storagePath.Path());
+     BPath dataBasePath(storagePath);
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp
+--- orig/haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp	2026-03-22 14:38:01.424149000 +0000
++++ haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp	2026-09-05 14:52:47.260550013 +0000
+@@ -154,6 +154,27 @@
+ 
+ void FrameLoaderClientHaiku::detachedFromParent2()
+ {
++    // Nobody owns the BWebFrame that BWebFrame::AddChild() makes for a
++    // subframe. It holds a RefPtr to the LocalFrame, the LocalFrame owns its
++    // FrameLoader, the FrameLoader owns this client, and this client is the
++    // only thing that points back at the BWebFrame -- a cycle with no outside
++    // reference to break it. So every subframe of every page ever loaded
++    // stayed alive for the life of the process, and with it its Document, its
++    // DOM tree, its decoded images and its JavaScript wrappers. On news sites
++    // that is six or more frames per page.
++    //
++    // This is where WebKit tells a client that a frame is being taken apart,
++    // so this is where the cycle has to be broken. The page's main frame is
++    // owned by BWebPage and reused across navigations, so it is left alone.
++    // FrameLoader::detachFromParent() holds a Ref to the frame across this
++    // call, so releasing the last reference here cannot destroy the object the
++    // caller is standing on.
++    if (m_webFrame != nullptr && m_webPage != nullptr
++        && m_webFrame != m_webPage->MainFrame()) {
++        BWebFrame* frame = m_webFrame;
++        m_webFrame = nullptr;
++        delete frame;
++    }
+ }
+ 
+ void FrameLoaderClientHaiku::detachedFromParent3()
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/cmake/OptionsHaiku.cmake haikuwebkit/Source/cmake/OptionsHaiku.cmake
+--- orig/haikuwebkit/Source/cmake/OptionsHaiku.cmake	2026-07-24 16:04:19.826015700 +0000
++++ haikuwebkit/Source/cmake/OptionsHaiku.cmake	2026-09-02 07:25:43.601283007 +0000
+@@ -1,6 +1,11 @@
+ include(GNUInstallDirs)
+ include(VersioningUtils)
+ 
++# Root of the Haiku system directory. On a native build this is /system; a
++# cross build points it at the sysroot's boot/system so the private headers
++# below resolve.
++set(HAIKU_SYSTEM_DIR "/system" CACHE PATH "Haiku system directory (sysroot/boot/system when cross-compiling)")
++
+ SET(PROJECT_VERSION_MAJOR 1)
+ SET(PROJECT_VERSION_MINOR 10)
+ SET(PROJECT_VERSION_PATCH 0)
+@@ -41,7 +46,11 @@
+ FIND_PACKAGE(JPEG REQUIRED)
+ FIND_PACKAGE(LibXml2 2.8.0 REQUIRED)
+ FIND_PACKAGE(LibXslt 1.1.7 REQUIRED)
+-find_package(OpenGLES2 REQUIRED)
++if (ENABLE_WEBGL)
++    find_package(OpenGLES2 REQUIRED)
++else ()
++    find_package(OpenGLES2)
++endif ()
+ FIND_PACKAGE(PNG REQUIRED)
+ FIND_PACKAGE(SQLite3 REQUIRED)
+ find_package(Threads REQUIRED)

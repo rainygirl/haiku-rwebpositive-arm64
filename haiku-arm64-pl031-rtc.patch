@@ -1,0 +1,188 @@
+diff --git a/headers/private/kernel/arch/arm64/arch_kernel_args.h b/headers/private/kernel/arch/arm64/arch_kernel_args.h
+index 459ce88c4b..a5b1cabec9 100644
+--- a/headers/private/kernel/arch/arm64/arch_kernel_args.h
++++ b/headers/private/kernel/arch/arm64/arch_kernel_args.h
+@@ -35,6 +35,10 @@ typedef struct {
+ 	uart_info	uart;
+ 	intc_info	interrupt_controller;
+ 
++	// ARM PrimeCell PL031 real-time clock registers (QEMU virt has one);
++	// size is 0 when the device tree names none.
++	addr_range	pl031_rtc;
++
+ } _PACKED arch_kernel_args;
+ 
+ #endif	/* KERNEL_ARCH_ARM64_KERNEL_ARGS_H */
+diff --git a/src/system/boot/platform/efi/arch/arm64/arch_acpi.cpp b/src/system/boot/platform/efi/arch/arm64/arch_acpi.cpp
+index 4c727bb16f..1622cdc886 100644
+--- a/src/system/boot/platform/efi/arch/arm64/arch_acpi.cpp
++++ b/src/system/boot/platform/efi/arch/arm64/arch_acpi.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2019-2022 Haiku, Inc. All rights reserved.
++ * Copyright 2019-2026 Haiku, Inc. All rights reserved.
+  * Released under the terms of the MIT License.
+  */
+ 
+@@ -17,6 +17,9 @@
+ #include <arch/generic/debug_uart_8250.h>
+ 
+ 
++void arm64_handle_acpi_fadt(acpi_fadt_arm_boot_arch armBootFlags);
++
++
+ static void arch_acpi_get_uart_pl011(const uart_info &uart)
+ {
+ 	static char sUART[sizeof(ArchUARTPL011)];
+@@ -83,6 +86,28 @@ arch_handle_acpi()
+ 		}
+ 	}
+ 
++	acpi_fadt* fadt = (acpi_fadt*)acpi_find_table(ACPI_FADT_SIGNATURE);
++	if (fadt != NULL && fadt->header.length >= sizeof(acpi_fadt)) {
++		dprintf("discovered fadt from acpi: psci_compliant=%d, "
++				"psci_use_hvc=%d\n",
++			fadt->arm_boot_arch.psci_compliant, fadt->arm_boot_arch.psci_use_hvc);
++		arm64_handle_acpi_fadt(fadt->arm_boot_arch);
++	}
++
++	// QEMU's virt machine describes its PL031 RTC only in the DSDT (device
++	// ARMH0011), which this loader does not interpret, and EDK2 withholds the
++	// device tree once ACPI is in use, so the FDT path in arch_dtb.cpp never
++	// sees it. The virt memory map is fixed, so when the firmware is QEMU's
++	// (OEM id "BOCHS ") use the known address. Any other firmware gets no RTC
++	// rather than a guess.
++	addr_range &rtc = gKernelArgs.arch_args.pl031_rtc;
++	if (rtc.size == 0 && fadt != NULL
++		&& memcmp(fadt->header.oem_id, "BOCHS ", 6) == 0) {
++		rtc.start = 0x09010000;
++		rtc.size = 0x1000;
++		dprintf("assuming QEMU virt pl031 rtc at %#" B_PRIx64 "\n", rtc.start);
++	}
++
+ 	acpi_madt *madt = (acpi_madt*)acpi_find_table(ACPI_MADT_SIGNATURE);
+ 	if (madt != NULL) {
+ 		uint64 gicc_base = 0;
+@@ -99,7 +124,7 @@ arch_handle_acpi()
+ 				platform_cpu_info* cpu = NULL;
+ 				arch_smp_register_cpu(&cpu);
+ 				if (cpu == NULL)
+-					continue;
++					break;
+ 				cpu->id = acpi_gicc->cpu_interface_num;
+ 				cpu->mpidr = acpi_gicc->mpidr;
+ 			} else if (desc->type == ACPI_MADT_GIC_DISTRIBUTOR) {
+diff --git a/src/system/boot/platform/efi/arch/arm64/arch_dtb.cpp b/src/system/boot/platform/efi/arch/arm64/arch_dtb.cpp
+index 500e25cc3e..436ad665c5 100644
+--- a/src/system/boot/platform/efi/arch/arm64/arch_dtb.cpp
++++ b/src/system/boot/platform/efi/arch/arm64/arch_dtb.cpp
+@@ -59,6 +59,16 @@ arch_handle_fdt(const void* fdt, int node)
+ 	if (compatible == NULL)
+ 		return;
+ 
++	// The kernel has no libfdt of its own, so the PL031 RTC is located here
++	// and handed over through kernel_args, the same way the UART is.
++	addr_range &rtc = gKernelArgs.arch_args.pl031_rtc;
++	if (rtc.size == 0 && dtb_has_fdt_string(compatible, compatibleLen, "arm,pl031")) {
++		if (dtb_get_reg(fdt, node, 0, rtc)) {
++			dprintf("discovered pl031 rtc at %#" B_PRIx64 "\n", rtc.start);
++		} else
++			rtc.size = 0;
++	}
++
+ 	intc_info &interrupt_controller = gKernelArgs.arch_args.interrupt_controller;
+ 	if (interrupt_controller.kind[0] == 0) {
+ 		for (uint32 i = 0; i < B_COUNT_OF(kSupportedInterruptControllers); i++) {
+diff --git a/src/system/kernel/arch/arm64/arch_real_time_clock.cpp b/src/system/kernel/arch/arm64/arch_real_time_clock.cpp
+index a0ee708356..e4fdd814cd 100644
+--- a/src/system/kernel/arch/arm64/arch_real_time_clock.cpp
++++ b/src/system/kernel/arch/arm64/arch_real_time_clock.cpp
+@@ -1,17 +1,67 @@
+ /*
+- * Copyright 2019 Haiku, Inc. All Rights Reserved.
++ * Copyright 2019-2026 Haiku, Inc. All rights reserved.
+  * Distributed under the terms of the MIT License.
+  */
++
++
+ #include <arch/real_time_clock.h>
+ 
++#include <boot/kernel_args.h>
+ #include <real_time_clock.h>
+ #include <real_time_data.h>
+ #include <smp.h>
++#include <vm/vm.h>
++
++
++// ARM PrimeCell PL031 real-time clock. QEMU's virt machine has one, and
++// without it the kernel has no time source at all and boots into 1970,
++// which breaks every TLS certificate check. The boot loader finds the
++// device in the device tree and passes its registers in kernel_args.
++#define PL031_RTCDR		0x000	// data: seconds since the epoch
++#define PL031_RTCLR		0x008	// load: writing sets the counter
++#define PL031_RTCCR		0x00c	// control: bit 0 enables the counter
++
++static volatile uint8* sPL031 = NULL;
++
++
++static inline uint32
++pl031_read(uint32 reg)
++{
++	return *(volatile uint32*)(sPL031 + reg);
++}
++
++
++static inline void
++pl031_write(uint32 reg, uint32 value)
++{
++	*(volatile uint32*)(sPL031 + reg) = value;
++}
+ 
+ 
+ status_t
+ arch_rtc_init(kernel_args *args, struct real_time_data *data)
+ {
++	addr_range& regs = args->arch_args.pl031_rtc;
++	if (regs.size == 0)
++		return B_OK;
++
++	// vm_init() has run, so areas can be created; this runs on the boot
++	// CPU only, before other threads exist.
++	void* base = NULL;
++	area_id area = vm_map_physical_memory(B_SYSTEM_TEAM, "pl031 rtc", &base,
++		B_ANY_KERNEL_ADDRESS, ROUNDUP(regs.size, B_PAGE_SIZE),
++		B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA, regs.start, false);
++	if (area < 0) {
++		dprintf("arch_rtc_init: mapping pl031 at %#" B_PRIx64 " failed: %s\n",
++			regs.start, strerror(area));
++		return B_OK;
++	}
++
++	sPL031 = (volatile uint8*)base;
++	if ((pl031_read(PL031_RTCCR) & 1) == 0)
++		pl031_write(PL031_RTCCR, 1);
++	dprintf("arch_rtc_init: pl031 rtc at %#" B_PRIx64 ", time %" B_PRIu32 "\n",
++		regs.start, pl031_read(PL031_RTCDR));
+ 	return B_OK;
+ }
+ 
+@@ -19,13 +69,18 @@ arch_rtc_init(kernel_args *args, struct real_time_data *data)
+ uint64
+ arch_rtc_get_hw_time(void)
+ {
+-	return 0;
++	if (sPL031 == NULL)
++		return 0;
++	return pl031_read(PL031_RTCDR);
+ }
+ 
+ 
+ void
+ arch_rtc_set_hw_time(uint64 seconds)
+ {
++	if (sPL031 == NULL)
++		return;
++	pl031_write(PL031_RTCLR, (uint32)seconds);
+ }
+ 
+ 
