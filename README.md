@@ -11,14 +11,43 @@ Porting notes, measurements and open problems: [`AGENTS.md`](AGENTS.md).
 
 ![Naver News](screenshots/news-naver-arm64.png)
 
-## Installing on a Haiku arm64 image
+## Installing with pkgman
+
+If the machine has a working network connection and a correct clock, this
+is the simplest way:
+
+```sh
+pkgman add-repo https://raw.githubusercontent.com/rainygirl/haiku-rwebpositive-arm64/main
+pkgman install webpositive libmedia_bootstrap
+```
+
+`libmedia_bootstrap` has to be named explicitly -- see "What gets installed"
+below for why it exists and why the dependency solver does not pull it in
+on its own. If the machine also has no `ca_root_certificates` (a stock
+arm64 image does not), add that to the same `install` line.
+
+**Check the clock first: `date`.** This project's own arm64 test images
+come up reading `Thu Jan 1 00:04:30 GMT 1970` -- the QEMU `virt` board's RTC
+is never read at boot -- and no certificate on the real internet is valid
+yet by that clock, so `pkgman add-repo` fails with `Operation not allowed`
+until the date is set by hand:
+
+```sh
+date 0916120026    # MMDDhhmmYYYY, i.e. this example is Sep 16, 12:00, 2026
+```
+
+If the network is not available, or the clock cannot be fixed, use one of
+the two offline methods below instead; neither needs the guest to reach
+anything.
+
+## Installing offline, without pkgman
 
 Haiku's own arm64 nightlies (`haiku-master-hrevNNNNN-arm64-mmc.zip` from
 [download.haiku-os.org](https://download.haiku-os.org/nightly-images/arm64/))
-have no WebPositive, and `pkgman install webpositive` cannot get you one: the
-arm64 HaikuPorts repository is empty, and the 36-package bootstrap set Haiku
-builds arm64 from carries no WebKit. The browser and its libraries have to be
-copied in by hand.
+have no WebPositive, and the arm64 HaikuPorts repository is empty, and the
+36-package bootstrap set Haiku builds arm64 from carries no WebKit -- so
+short of pointing `pkgman` at this repository (above), the browser and its
+libraries have to be copied in by hand.
 
 That is what `install-webpositive-arm64.sh` does. Copy this repository's
 `packages/` directory and the script onto the Haiku machine -- on real

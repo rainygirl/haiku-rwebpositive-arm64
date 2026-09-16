@@ -1704,7 +1704,7 @@ Fix: extract that one file (SONAME `libmedia.so`, unversioned, matching
 haikuwebkit's DT_NEEDED entry exactly; its own dependencies -- libbe,
 libstdc++.so.6, libroot, libgcc_s -- are already part of any Haiku system)
 and package it as `libmedia_bootstrap`, tied to the hrev it came from in its
-own filename (`libmedia_bootstrap-r1_hrev60071_15-1-arm64.hpkg`). Added to
+own filename (`libmedia_bootstrap-r1~beta6_hrev60071_15-1-arm64.hpkg`). Added to
 both `install-webpositive-arm64.sh`'s `REQUIRED` list and
 `inject-webpositive-arm64.sh`'s plan. After adding it, WebPositive opened,
 loaded `about:blank` then `http://example.com/`, and rendered layout (title
@@ -1778,7 +1778,7 @@ filesystem path, which was not tried. Until that is sorted out,
 a plain package set to an active one that has actually been verified working
 here.
 
-## pkgman over the network: arm64 has no TLS at all (2026-09-16)
+## pkgman over the network: solved (2026-09-16)
 
 Checked what it would take to make `pkgman add-repo <a public GitHub URL>`
 the install path, since GitHub already hosts this repository's source and
@@ -1840,24 +1840,56 @@ completes a real TLS handshake and gets a real HTTP response back -- this
 part of the "pkgman over the network" question from earlier today is
 solved.
 
-It is not enough on its own, though. Both of those `add-repo` calls (and
-plain `http://` against the same host, and `pkgman refresh` against the
-repository pkgman ships pre-configured with) fail identically:
-`*** failed! : Operation not allowed`. Read `B_NOT_ALLOWED`'s meaning in
-context rather than guessing: `src/kits/package/FetchFileJob.cpp` maps it
-specifically from an HTTP response of 403 Forbidden, 405 Method Not
-Allowed, or 406 Not Acceptable -- so the connection and the request both
-succeed, and the *server* is declining it. Ruled out: DNS and plain IP
-connectivity both work (`ping 8.8.8.8` succeeds, DHCP assigns an address
-and a nameserver), the guest's own user (`baron`) is `uid=0`, so it is not
-a local file-permission problem writing the repository cache, and whether
-`/system/data/ssl/CARootCertificates.pem` is present or missing (installed
-it partway through this investigation) makes no difference to the outcome.
-Haiku's HTTP client (`src/kits/network/libnetservices/HttpRequest.cpp`)
-sends a plausible-looking default `User-Agent: Services Kit (Haiku)`, so
-that specific header is not an obvious culprit, but nothing more specific
-than "the server says no" was found this session -- would need reading
-further into what else that client sends (or a packet capture) to pin
-down. Until that is understood, `pkgman` is still not a working install
-path for WebPositive on arm64, over TLS or not; `install-webpositive-arm64.sh`
-and `inject-webpositive-arm64.sh` remain the only verified ones.
+It looked stuck for a while, though: `add-repo` against `eu.hpkg.haiku-os.org`,
+`raw.githubusercontent.com`, plain `http://` against the same hosts, and
+`pkgman refresh` against the pre-configured repository all failed
+identically with `*** failed! : Operation not allowed`. The wrong turn
+along the way is worth recording so it is not retried: `B_NOT_ALLOWED` is
+also what `src/kits/package/FetchFileJob.cpp` returns for an HTTP 403/405/406,
+and that mapping is real, but it is not what was actually happening here --
+chasing "which server is blocking Haiku's request" wasted real time on a
+theory that a raw request replay (`curl` with the exact same headers
+Haiku sends, captured with a small logging HTTP server run on the host and
+reached from the guest at `10.0.2.2`) never reproduced.
+
+The actual source, found by patching `SecureSocket.cpp`'s swallowed
+`SSL_ERROR_SSL` case to print `ERR_error_string()` before returning (it
+normally returns `B_NOT_ALLOWED` with no detail at all -- see the comment
+"Probably no certificate" right above the `return`) and rebuilding:
+
+    DEBUG SSL_ERROR_SSL: error:0A000086:SSL routines::certificate verify failed
+
+Not a server, not a header, not a missing CA bundle (installing
+`ca_root_certificates` partway through made no difference by itself) --
+`openssl s_client -connect ... -CAfile CARootCertificates.pem` against the
+same host gave `Verify return code: 9 (certificate is not yet valid)`, and
+`date` on the guest read `Thu Jan 1 00:04:30 GMT 1970`. This QEMU `virt`
+board's RTC never gets read at boot, so every arm64 guest here starts at
+the Unix epoch, and no certificate on the real internet is valid yet by
+that clock. Setting it by hand (`date MMDDhhmmYYYY`) made the exact same
+`add-repo` call succeed immediately. **Anyone using `pkgman` against a
+real HTTPS repository on one of these images needs a correct clock
+first** -- check with `date`, set it if it reads 1970.
+
+With the clock fixed, `pkgman add-repo` against this project's own GitHub
+repository worked end to end, with two more small fixes on the repository
+side: it needs a `repo.sha256` file (`RefreshRepositoryRequest.cpp` fetches
+`<base-url>/repo.sha256` on every add/refresh to decide if the cached index
+is stale -- a plain `shasum -a 256 repo` next to it is enough), and every
+package's filename has to match its own embedded version string exactly
+character for character, because pkgman reconstructs the expected download
+filename from the repository index's metadata, never from whatever the
+file is actually named on disk (`libmedia_bootstrap`'s file was missing
+the `~beta6_` its own `.PackageInfo` version carried, and every install
+failed with "Resource not found" until the filename matched). Both are
+straightforward once known; see the commits that added `repo`/`repo.info`/
+`repo.sha256` at this repository's root, and the fix in the sibling
+`haiku-renku-arm64-ssltlspatch` project.
+
+`pkgman add-repo https://raw.githubusercontent.com/rainygirl/haiku-rwebpositive-arm64/main`
+followed by `pkgman install webpositive libmedia_bootstrap` now installs
+and runs WebPositive with no attached media and no offline injection at
+all -- see the README for the exact commands. `install-webpositive-arm64.sh`
+and `inject-webpositive-arm64.sh` remain useful for a system with no
+working clock or no network, but pkgman is now the simplest path where
+both are available.

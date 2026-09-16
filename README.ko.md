@@ -11,14 +11,41 @@ English version: [`README.md`](README.md).
 
 ![네이버 뉴스](screenshots/news-naver-arm64.png)
 
-## Haiku arm64 이미지에 설치하기
+## pkgman으로 설치하기
+
+기계에 네트워크가 되고 시계가 맞다면 이게 가장 간단합니다:
+
+```sh
+pkgman add-repo https://raw.githubusercontent.com/rainygirl/haiku-rwebpositive-arm64/main
+pkgman install webpositive libmedia_bootstrap
+```
+
+`libmedia_bootstrap`은 따로 이름을 적어줘야 합니다 -- 이게 왜 있고 의존성
+해결기가 왜 알아서 안 가져오는지는 아래 "들어가는 것"을 보십시오. 순정
+arm64 이미지에는 `ca_root_certificates`도 없으니, 없다면 같은 install
+줄에 추가하십시오.
+
+**먼저 시계부터 확인하십시오: `date`.** 이 프로젝트의 arm64 테스트
+이미지는 부팅하면 `Thu Jan 1 00:04:30 GMT 1970`로 나옵니다 -- QEMU
+`virt` 보드의 RTC를 부팅 때 아예 안 읽습니다 -- 그 시각으로는 인터넷의
+어떤 인증서도 아직 유효하지 않아서, 시계를 손으로 맞추기 전까지는
+`pkgman add-repo`가 `Operation not allowed`로 실패합니다:
+
+```sh
+date 0916120026    # MMDDhhmmYYYY, 이 예시는 2026년 9월 16일 12시
+```
+
+네트워크가 없거나 시계를 못 맞추면 아래 오프라인 방법 둘 중 하나를
+쓰십시오 -- 둘 다 게스트가 어디에도 접속할 필요가 없습니다.
+
+## Haiku arm64 이미지에 오프라인으로 설치하기 (pkgman 없이)
 
 Haiku가 내놓는 arm64 nightly(`haiku-master-hrevNNNNN-arm64-mmc.zip`,
 [download.haiku-os.org](https://download.haiku-os.org/nightly-images/arm64/))에는
-WebPositive가 없고, `pkgman install webpositive`로도 받을 수 없습니다. arm64
-HaikuPorts 저장소는 비어 있고, Haiku가 arm64를 빌드하는 36개짜리 부트스트랩
-패키지 묶음에는 WebKit이 없기 때문입니다. 브라우저와 그 아래 라이브러리를
-손으로 복사해 넣어야 합니다.
+WebPositive가 없고, arm64 HaikuPorts 저장소는 비어 있고, Haiku가 arm64를
+빌드하는 36개짜리 부트스트랩 패키지 묶음에는 WebKit이 없습니다 -- 그러니
+위처럼 이 저장소를 `pkgman`으로 바로 가리키는 게 아니라면, 브라우저와 그
+아래 라이브러리를 손으로 복사해 넣어야 합니다.
 
 `install-webpositive-arm64.sh`가 그 일을 합니다. 이 저장소의 `packages/`
 디렉터리와 스크립트를 Haiku 기계로 옮기십시오. 실제 기계라면 USB 메모리로,
