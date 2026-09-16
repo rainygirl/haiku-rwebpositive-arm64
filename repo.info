@@ -1,0 +1,7 @@
+name "WebPositive arm64"
+vendor "Haiku Project"
+summary "WebPositive and HaikuWebKit for Haiku arm64, hosted from GitHub"
+priority 1
+url "tag:rainygirl.com,2026:rwebpositive-arm64"
+identifier "tag:rainygirl.com,2026:rwebpositive-arm64"
+architecture arm64
