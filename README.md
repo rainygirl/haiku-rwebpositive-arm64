@@ -1,12 +1,13 @@
 # WebPositive for Haiku arm64
 
+한국어: [`README.ko.md`](README.ko.md).
+
 A working web browser on Haiku running on 64-bit ARM. WebPositive with
 HaikuWebKit 1.10.0, cross-compiled for arm64.
 
 The official Haiku arm64 images do not ship a browser, so there is an
 installer here that puts one on them.
 
-Korean version: [`README.ko.md`](README.ko.md).
 Porting notes, measurements and open problems: [`AGENTS.md`](AGENTS.md).
 
 ![Naver News](screenshots/news-naver-arm64.png)
