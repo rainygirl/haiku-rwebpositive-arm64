@@ -70,7 +70,7 @@ curl -fsSL https://pkgman.rainygirl.com/install-all.sh | sh
 이 스크립트는 시계를 자동으로 맞추고, `https://`가 실패하면 `http://`로
 자동으로 넘어가서, 두 종류의 이미지 모두에서 따로 물어볼 것 없이
 동작합니다. 다만 minimum 이미지에는 이걸 받을 `curl`(도 `wget`도) 자체가
-없습니다 -- 그 기계에서 서버와 아직 말할 수 있는 유일한 것은
+없습니다 -- 그 기계에서 서버와 통신할 수 있는 유일한 방법은
 `openssl s_client`입니다:
 
 ```sh
