@@ -1777,3 +1777,46 @@ filesystem path, which was not tried. Until that is sorted out,
 `install-webpositive-arm64.sh`'s direct-copy approach is the only path from
 a plain package set to an active one that has actually been verified working
 here.
+
+## pkgman over the network: arm64 has no TLS at all (2026-09-16)
+
+Checked what it would take to make `pkgman add-repo <a public GitHub URL>`
+the install path, since GitHub already hosts this repository's source and
+packages. It cannot work today, on any arm64 Haiku image, official or built
+here -- not a URL-syntax problem, a missing capability:
+
+`src/kits/network/libnetapi/Jamfile` builds two variants of `libbnetapi.so`,
+`ssl` and `no-ssl`, chosen by `if [ FIsBuildFeatureEnabled openssl ]` at
+Haiku-build time -- it needs `openssl_devel` in the repository the *OS
+itself* is built against, not merely installed afterward. The arm64
+bootstrap repository (`build/jam/repositories/HaikuPorts/arm64`, the same
+36-package one with no WebKit) carries no such package, so every "haiku"
+built from it links the `no-ssl` variant: no `libssl`/`libcrypto` anywhere
+in `pkgman`'s or `package_daemon`'s dependency chain
+(`pkgman -> libpackage.so -> libbnetapi.so -> libnetwork.so -> libbsd.so`,
+checked with `readelf -d`, confirmed by `find .../release -iname libssl\*`
+turning up nothing at all in the built tree). This was checked against both
+this project's own `jam @minimum-mmc` build (hrev60071_15) and the real
+`haiku-master-hrev59628-arm64-mmc.zip` from download.haiku-os.org (extracted
+`lib/libbnetapi.so` from its `haiku` package with `bfs_shell`/
+`fs_shell_command`, same no-ssl dependency set, just against ICU 67 instead
+of 74) -- it is the official build, not a gap in this project's pipeline.
+
+GitHub's raw content service and Pages are HTTPS-only, no plain-HTTP
+fallback, so no way of hosting packages there changes this. A plain
+`http://` host would work -- `pkgman`'s dependency chain needs nothing SSL
+does for unencrypted sockets -- but that means a real server, not GitHub;
+`pkgman.rainygirl.com` (named in `haiku-apps/pkgman-repo`'s README as the
+intended host) does not appear to be that yet: it resolves and answers on
+port 80, but serves an unrelated site, and the TLS handshake on port 443
+does complete (so *something* is listening) but the plaintext content is
+the same wrong site -- nothing Haiku-specific is deployed there currently.
+
+The actual fix -- building Haiku's arm64 image with `openssl_devel` staged
+into the bootstrap repository before the OS itself compiles, so
+`libbnetapi.so` links the `ssl` variant -- is a change to how Haiku itself
+is built for arm64, not a packaging change, and has not been attempted.
+Until either that or a plain-HTTP host exists, `install-webpositive-arm64.sh`
+and `inject-webpositive-arm64.sh` remain the only verified ways to get
+WebPositive onto an arm64 image: neither needs the guest to reach a network
+at all.
