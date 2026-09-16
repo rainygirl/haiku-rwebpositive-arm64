@@ -1669,3 +1669,111 @@ lib:libavif needed by haikuwebkit-1.10.0-3", so the burst is what fixed it.
 
 Not verified: the ABI of these r1~beta6-built packages against a master
 kernel and libroot, because no master image boots here.
+
+## The Media Kit gap, and testing against a real minimum image (2026-09-16)
+
+A live QEMU instance (`renku-arm64-source-nightly.image`, r1~beta6+development
+hrev60071_15, built via this project's own `jam @minimum-mmc` pipeline in the
+haiku-builder container, not downloaded) turned out to be exactly the test
+bed the port had been missing: a genuinely minimal arm64 nightly, booted and
+running, rather than a RENKU-descended disk whose "haiku" package is a much
+larger custom build. Its package list was the 11-package bootstrap set with
+`icu74-74.1_bootstrap-1-arm64.hpkg` under the name `icu74` (not ICU 67) --
+worth noting since earlier text in this file and the READMEs assumed ICU 67
+from the one hrev59628 nightly inspected the session before; both exist
+across different arm64 nightlies, hence the READMEs now say "or" rather than
+naming one.
+
+Installing the (until-then) full required set worked cleanly -- no dialog,
+correct activation -- and then WebPositive exited immediately:
+`runtime_loader: Cannot open file libmedia.so (needed by
+/boot/system/lib/libWebKitLegacy.so.1.10.0)`. `ls /system/lib/libmedia*`,
+`/system/servers/media_server`, `/system/add-ons/media` all came back "No
+such file or directory". This is not an arm64-specific gap: the tree's
+`build/jam/images/definitions/minimum` file simply does not list
+`libmedia.so` at all (the `regular` desktop profile does, at line 128), on
+any architecture -- `jam @minimum-anyboot`/`@minimum-mmc` never build the
+Media Kit into the image, though the kit itself compiles fine for arm64 and
+was already sitting built at
+`generated.arm64/objects/haiku/arm64/release/kits/media/libmedia.so` in the
+same tree. Every arm64 nightly encountered so far, at download.haiku-os.org
+and built by this project alike, is minimum-profile, so this is a real gap
+for every one of them, not an edge case.
+
+Fix: extract that one file (SONAME `libmedia.so`, unversioned, matching
+haikuwebkit's DT_NEEDED entry exactly; its own dependencies -- libbe,
+libstdc++.so.6, libroot, libgcc_s -- are already part of any Haiku system)
+and package it as `libmedia_bootstrap`, tied to the hrev it came from in its
+own filename (`libmedia_bootstrap-r1_hrev60071_15-1-arm64.hpkg`). Added to
+both `install-webpositive-arm64.sh`'s `REQUIRED` list and
+`inject-webpositive-arm64.sh`'s plan. After adding it, WebPositive opened,
+loaded `about:blank` then `http://example.com/`, and rendered layout (title
+bar, status bar, a horizontal rule where body text would be -- this last one
+is the already-diagnosed `DrawStringLocations`/`SetFontShear` app_server bug
+from the section above; this particular guest is a plain nightly build, not
+one carrying that patch, so the symptom is expected here and says nothing
+about the fix's correctness).
+
+Two dead ends on the way to that fix, worth recording so they are not
+retried: `ls /myfs/system/lib` inside `bfs_shell` -- to check whether an
+image already has `libmedia.so` before deciding whether to add
+`libmedia_bootstrap` -- fails with "Failed to stat()", because `/system/lib`
+is not a real on-disk directory at all; it is packagefs's own virtual merge
+of every active package's files, which exists only once the kernel is
+running. An unbooted BFS partition has nothing under `system/` but
+`packages/` and a few literal non-packaged files. And reading bfs_shell's
+own command output back mid-session, to parse *any* directory listing for a
+decision, cannot be made reliable: its stdout is fully block-buffered once
+redirected to a file instead of a TTY, so content from one command can still
+be sitting in that buffer -- invisible to a reader of the log file -- when
+the next command's result is already expected, and only reliably flushes at
+process exit. `inject-webpositive-arm64.sh` does not try to detect what is
+already on a disk for this reason; it always copies its full plan with
+`cp -f`, which is exactly as safe as it sounds given nothing is booted or
+running to be disrupted, and gives `-m` as a manual opt-out for
+`libmedia_bootstrap` on a target already known to be a regular/desktop build
+(installing it there would put two packages' files at the same path, which
+packagefs will refuse to boot with active).
+
+## bfs_shell and fs_shell_command: writing into a Haiku image with no kernel
+
+`inject-webpositive-arm64.sh` needed a way to add files to a BFS partition
+inside a raw disk image without ever booting Haiku. `bfs_shell` (a host tool
+build product, at `generated.<arch>/objects/.../release/tools/bfs_shell/`)
+mounts a BFS partition and drops into an interactive shell whose root shows
+only one entry, `myfs` -- the mounted volume itself, e.g. `ls /myfs/system`.
+Its own `cp` cannot see the real host filesystem at all: `cp
+/root/foo /myfs/bar` fails with "Failed to open source path", because *every*
+path bfs_shell resolves, prefixed or not, goes through its own synthetic
+namespace unless something more is done.
+
+That something more is a second host tool, `fs_shell_command`
+(`generated.<arch>/objects/.../release/tools/fs_shell/`), and it is how
+Haiku's own build system does exactly this (`build/scripts/build_haiku_image`,
+`build/jam/MiscRules`'s `bfs_shell`-mounting rule is for interactive use
+only). The two talk over four FIFOs set up by the caller, not stdin/stdout:
+`bfs_shell` is launched once as a long-running server with fds 3-6 remapped
+(`3>&5 4<&6 5>&- 6>&-`) reading commands from fd 4 and replying on fd 6;
+`fs_shell_command` is a separate short-lived client process per command
+(`3<&3 4>&4 5>&- 6>&-`), one full round trip each. `build_haiku_image`'s own
+comment gives the convention plainly: for image-mode copies, `sPrefix=":"`
+and `tPrefix="/myfs/"` -- a `:`-prefixed path escapes bfs_shell's synthetic
+namespace to reach a real host file, an unprefixed one resolves inside the
+mounted image. So `cp -f ":/host/path/pkg.hpkg" "/myfs/system/packages/pkg.hpkg"`
+is the whole recipe; getting the colon on the wrong side produces the same
+"Failed to open source path" error regardless of which side is actually
+real, which is what cost the most time working this out.
+
+Two more things that do not work here and are not worth retrying: `pkgman
+add-repo file:///path/to/repo` (built and indexed correctly with
+`package_repo create` -- `package_repo list -f` shows all 11 packages fine)
+fails every way the path was given to it -- a bare path ("Invalid
+Argument"), the repo file directly ("Not a directory"), and the containing
+directory ("No such file or directory") -- against a Haiku booted from this
+same tree. `pkgman add-repo --help` says it "downloads" repositories from a
+URL, which reads as this command being built and tested against http(s)
+only; a `file://` repo may need serving over local HTTP instead of a bare
+filesystem path, which was not tried. Until that is sorted out,
+`install-webpositive-arm64.sh`'s direct-copy approach is the only path from
+a plain package set to an active one that has actually been verified working
+here.

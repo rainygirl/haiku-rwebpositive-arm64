@@ -77,6 +77,19 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 #                  before any window appears. See AGENTS.md.
 #   haikuwebkit    the engine, and the third-party libraries it bundles
 #   webpositive    the browser itself
+#   libmedia_bootstrap  libmedia.so, unconditionally in haikuwebkit's
+#                  DT_NEEDED. The *minimum* image profile (what
+#                  jam @minimum-anyboot builds, and what every arm64 nightly
+#                  at download.haiku-os.org is) drops the whole Media Kit --
+#                  no media_server, no libmedia.so, on any architecture, by
+#                  design, not an arm64 gap. A "regular"/desktop-profile
+#                  Haiku already has libmedia.so as part of its own "haiku"
+#                  package, so this is handled separately below, by whether
+#                  the file exists, not by package name: installing it next
+#                  to an existing libmedia.so from "haiku" would put two
+#                  packages' files at the same path. This one file is tied to
+#                  the exact hrev its filename names; a different hrev may
+#                  need its own extraction if libbe's ABI has moved.
 #
 # Optional, but shipped here:
 #   ca_root_certificates  the arm64 images do not include it, and without it
@@ -85,6 +98,7 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 #                  is empty boxes. The largest file here
 # ---------------------------------------------------------------------------
 REQUIRED="dav1d libavif1.0 openssl3 sqlite3 icu74 icu74_bootstrap haikuwebkit webpositive"
+LIBMEDIA_PKG="libmedia_bootstrap"
 OPTIONAL="ca_root_certificates noto_sans_cjk_kr"
 
 # Find the one file in PKGDIR whose package name is $1. Package file names are
@@ -148,6 +162,21 @@ for name in $OPTIONAL; do
 		say "not found          $name (optional)"
 	fi
 done
+
+# libmedia.so is checked by file, not by package name: on a "regular"/desktop
+# Haiku it already exists as part of the "haiku" package itself, and this
+# package would collide with that. On a minimum image it does not exist at
+# all (no Media Kit there, on any architecture), and haikuwebkit will not
+# start without it.
+if [ -e /system/lib/libmedia.so ]; then
+	say "already installed  libmedia (part of the base system)"
+elif f=$(find_pkg "$LIBMEDIA_PKG"); then
+	say "found              $(basename "$f")"
+	PLAN="$PLAN $f"
+else
+	say "MISSING            $LIBMEDIA_PKG"
+	MISSING="$MISSING $LIBMEDIA_PKG"
+fi
 
 [ -z "$MISSING" ] || die "missing required packages:$MISSING"
 
@@ -240,6 +269,7 @@ i=0
 while [ $i -lt 45 ]; do
 	if [ -e /system/apps/WebPositive ] \
 		&& [ -e /system/lib/libWebKitLegacy.so.1 ] \
+		&& [ -e /system/lib/libmedia.so ] \
 		&& [ -e "$ICUDATA" ]; then
 		break
 	fi
@@ -260,6 +290,15 @@ if [ -e /system/lib/libWebKitLegacy.so.1 ]; then
 	say "the engine is active"
 else
 	say "libWebKitLegacy.so.1 is not active"; ok=0
+fi
+
+# haikuwebkit's runtime_loader needs this one unconditionally; without it
+# WebPositive exits immediately ("Cannot open file libmedia.so") instead of
+# opening a window. See the comment on libmedia_bootstrap above.
+if [ -e /system/lib/libmedia.so ]; then
+	say "libmedia.so is active"
+else
+	say "libmedia.so is not active -- WebPositive will not start"; ok=0
 fi
 
 # Not /system/data/icu/74.1: icu74 puts a copy there too, and ICU never looks

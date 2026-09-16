@@ -53,17 +53,19 @@ qemu-system-aarch64 ... \
 
 ### 들어가는 것
 
-패키지 열 개, 94 MB, 모두 `packages/`에 있습니다. 순정 arm64 이미지에는
-패키지가 열한 개뿐이라 -- haiku, haiku_loader, haiku_datatranslators, bash,
-coreutils, freetype, gcc_syslibs, icu 67, ncurses6, noto, zlib -- WebKit이
-링크하는 것 거의 전부를 같이 가져가야 합니다:
+패키지 열한 개, 94 MB, 모두 `packages/`에 있습니다. 순정 arm64 이미지에는
+자기 패키지가 열한 개뿐이라 -- haiku, haiku_loader, haiku_datatranslators,
+bash, coreutils, freetype, gcc_syslibs, 이미지에 따라 icu74나 ICU 67,
+ncurses6, noto, zlib -- WebKit이 링크하는 것 거의 전부를 같이 가져가야
+합니다:
 
 | 패키지 | 크기 | 이유 |
 |---|---|---|
 | `haikuwebkit` | 37.0 MB | 엔진과, 같이 묶인 서드파티 라이브러리 |
 | `webpositive` | 0.5 MB | 브라우저 |
-| `icu74` | 14.3 MB | `libicuuc.so.74` 등. 이미지에는 ICU 67뿐 |
+| `icu74` | 14.3 MB | `libicuuc.so.74` 등. 이미지에 ICU 67뿐인 경우도 있음 |
 | `icu74_bootstrap` | 11.8 MB | ICU 로케일 데이터를 ICU가 찾는 자리에. **필수** |
+| `libmedia_bootstrap` | 0.3 MB | `libmedia.so`. 없으면 브라우저가 안 뜸. **필수** |
 | `openssl3` | 2.3 MB | `libssl.so.3`, `libcrypto.so.3` |
 | `sqlite3` | 0.5 MB | 쿠키와 웹 스토리지 |
 | `dav1d` | 0.4 MB | AV1 디코더 |
@@ -80,6 +82,19 @@ coreutils, freetype, gcc_syslibs, icu 67, ncurses6, noto, zlib -- WebKit이
 WebKit은 그걸 `ASSERT`로만 검사하니 JSC가 VM을 만들다 창이 뜨기도 전에
 죽습니다.
 
+`libmedia_bootstrap`이 있는 이유: 이 프로젝트가 만난 모든 arm64 nightly는
+-- 여기서 직접 빌드한 것이든 download.haiku-os.org에 있는 것이든 -- 전부
+minimum 이미지 프로파일로 만들어져 있고, 그건 Media Kit 전체를 뺍니다:
+media_server도, libmedia.so도, 어느 아키텍처든 원래 그렇게 설계돼 있습니다.
+HaikuWebKit은 libmedia.so를 무조건 링크하므로, 없으면 WebPositive는 창을
+아예 못 띄우고 `runtime_loader: Cannot open file libmedia.so`로 바로
+종료됩니다. 이 패키지는 같은 Haiku 리비전의 regular 빌드에서 뽑아낸 그 파일
+하나이고, 그 자체가 필요로 하는 것(`libbe`, `libroot`, `libstdc++`,
+`libgcc_s`)은 이미 모든 Haiku 시스템에 있어서 더 필요한 게 없습니다. 이미
+Media Kit이 온전한 이미지(minimum이 아니라 regular/desktop 빌드)라면 이건
+빼십시오 -- 아래 `inject-webpositive-arm64.sh` 항목에 방법과, 그냥 두면
+왜 문제가 되는지 적어 두었습니다.
+
 ### 안 될 때
 
 - **"Package changes"나 "Package problems" 창이 떴다.** package_daemon이 추가된
@@ -93,9 +108,15 @@ WebKit은 그걸 `ASSERT`로만 검사하니 JSC가 VM을 만들다 창이 뜨�
   있으면 그 파일에 적힌 것만 읽습니다. 순정 이미지에는 그 파일이 없으니
   재부팅하면 전부 활성화됩니다. 파일이 있으면(package_daemon이 처음 변경을
   커밋할 때 만듭니다) 지우고 재부팅하십시오.
-- **브라우저가 바로 꺼진다.** `icu74_bootstrap`이 활성화되지 않은 것입니다.
-  `/packages/icu74_bootstrap-74.1-1/.self/data/icu/74.1/icudt74l.dat`가
-  있는지 보십시오.
+- **브라우저가 바로 꺼진다.** 두 패키지 중 하나가 원인이고, 나가면서 남기는
+  오류(Terminal이나 `/boot/system/var/log/`의 크래시 로그)를 보면 어느 쪽인지
+  압니다.
+    - `runtime_loader: Cannot open file libmedia.so` -- `libmedia_bootstrap`이
+      활성화되지 않은 것입니다. `/system/lib/libmedia.so`를 확인하십시오.
+    - 아무것도 안 찍히고 창만 영영 안 뜬다 -- `icu74_bootstrap`이 활성화되지
+      않은 것입니다.
+      `/packages/icu74_bootstrap-74.1-1/.self/data/icu/74.1/icudt74l.dat`가
+      있는지 보십시오.
 - **https가 안 된다.** `/system/data/ssl/CARootCertificates.pem`이 없습니다.
   `ca_root_certificates`가 활성화되지 않은 것입니다.
 - **패키지가 `/boot/system/packages/`에 있는데 아무 일도 없다.** zstd로 압축된
@@ -110,6 +131,35 @@ nightly는 master입니다. 순정 hrev59628 nightly는 이 맥의 QEMU에서 �
 자기 디스크를 못 찾음) 설치 스크립트는 브라우저를 들어낸 arm64 Haiku 시스템에서
 시험했지, 순정 nightly에서는 아닙니다. master와의 ABI가 여기서 검증되지 않은
 유일한 부분입니다.
+
+## Haiku를 아예 부팅하지 않고 설치하기
+
+`install-webpositive-arm64.sh`는 대상 Haiku가 실제로 부팅해서 설치 매체를
+붙일 자리가 있어야 합니다. 늘 그렇지는 않습니다: 이 포트의 xhci는 이미 켜진
+채로 USB 디스크를 꽂아도 알아채지 못하고, AHCI 컨트롤러는 핫플러그 자체를
+거부합니다(둘 다 실제 QEMU에서 직접 확인). 그러니 장치를 바꿀 수 없는
+켜져 있는 기계는 재부팅 말고는 들어갈 방법이 없습니다 -- 직접 다루는
+하드웨어라면 괜찮지만, 대상을 아예 부팅하고 싶지 않거나 켜진 동안 아무것도
+붙일 수 없는 경우에는 곤란합니다.
+
+`inject-webpositive-arm64.sh`가 그 대안입니다. Haiku가 한 번도 실행되지 않은
+채로, Haiku 빌드 시스템이 새 이미지를 채울 때 쓰는 것과 같은 호스트 도구
+(`bfs_shell`, `fs_shell_command`)로 원시 디스크 이미지의 부트 파티션에
+패키지를 직접 씁니다. 부팅 사이클 없이 그대로 부팅해 WebPositive가 도는
+디스크가 나오는 것까지 확인했습니다:
+
+```sh
+export BFS_SHELL=/path/to/generated.arm64/objects/linux/arm64/release/tools/bfs_shell/bfs_shell
+export FS_SHELL_COMMAND=/path/to/generated.arm64/objects/linux/arm64/release/tools/fs_shell/fs_shell_command
+./inject-webpositive-arm64.sh haiku-arm64.image
+```
+
+![Haiku를 한 번도 부팅하지 않고 외부에서 넣은 뒤 Applications 메뉴에 나타난 WebPositive](screenshots/injected-webpositive-menu-arm64.png)
+
+두 도구 모두 Haiku 소스 트리의 호스트 도구 빌드 산출물이지, 따로 설치하는
+것이 아닙니다 -- 이 프로젝트가 쓰는 사본이 어디서 나오는지는 `AGENTS.md`를
+보십시오. 대상에 이미 Media Kit이 온전하다면(위 참고) `-m`을 붙여
+`libmedia_bootstrap`을 빼십시오.
 
 ## Haiku arm64 이미지를 QEMU로 실행하기
 

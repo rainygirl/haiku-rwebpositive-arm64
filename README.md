@@ -54,17 +54,19 @@ there yet, see "If it does not work" below.
 
 ### What gets installed
 
-94 MB in ten packages, all in `packages/`. A stock arm64 image carries eleven
-packages -- haiku, haiku_loader, haiku_datatranslators, bash, coreutils,
-freetype, gcc_syslibs, icu 67, ncurses6, noto, zlib -- so nearly everything
-WebKit links against has to come along:
+94 MB in eleven packages, all in `packages/`. A stock arm64 image carries
+eleven packages of its own -- haiku, haiku_loader, haiku_datatranslators,
+bash, coreutils, freetype, gcc_syslibs, icu74 or icu 67 depending on the
+build, ncurses6, noto, zlib -- so nearly everything WebKit links against has
+to come along:
 
 | Package | Size | Why |
 |---|---|---|
 | `haikuwebkit` | 37.0 MB | The engine, with the third-party libraries it bundles |
 | `webpositive` | 0.5 MB | The browser |
-| `icu74` | 14.3 MB | `libicuuc.so.74` and friends; the image has ICU 67 |
+| `icu74` | 14.3 MB | `libicuuc.so.74` and friends; some images have only ICU 67 |
 | `icu74_bootstrap` | 11.8 MB | ICU's locale data, where ICU looks for it. **Required** |
+| `libmedia_bootstrap` | 0.3 MB | `libmedia.so`, or WebPositive will not start. **Required** |
 | `openssl3` | 2.3 MB | `libssl.so.3`, `libcrypto.so.3` |
 | `sqlite3` | 0.5 MB | Cookies and web storage |
 | `dav1d` | 0.4 MB | AV1 decoder |
@@ -81,6 +83,20 @@ ICU has no locale data, `ucal_openTimeZoneIDEnumeration` returns null, WebKit
 checks that only with an `ASSERT`, and JSC crashes constructing its VM before
 any window appears.
 
+`libmedia_bootstrap` exists because every arm64 nightly this project has
+found -- both the ones built here and the ones at download.haiku-os.org --
+turns out to be built from the *minimum* image profile, which drops the
+whole Media Kit: no media_server, no libmedia.so, on any architecture, by
+design. HaikuWebKit links libmedia.so unconditionally, so without it
+WebPositive does not open a window at all; it exits with
+`runtime_loader: Cannot open file libmedia.so`. This package is that one
+file, pulled from a full build of the same Haiku revision, with nothing else
+needed since its own dependencies (`libbe`, `libroot`, `libstdc++`,
+`libgcc_s`) are already part of every Haiku system. If your image already
+has a full Media Kit (a "regular"/desktop build, not minimum), leave this
+one out -- see `inject-webpositive-arm64.sh` below for how, and why
+installing it anyway would be a problem, not just a waste.
+
 ### If it does not work
 
 - **A "Package changes" or "Package problems" window opened.** package_daemon
@@ -96,9 +112,14 @@ any window appears.
   exactly the set that file names. Stock images have no such file, so a
   reboot activates everything. If the file exists (package_daemon writes it
   the first time it commits a change), remove it and reboot.
-- **The browser exits immediately.** `icu74_bootstrap` did not activate.
-  Check that `/packages/icu74_bootstrap-74.1-1/.self/data/icu/74.1/icudt74l.dat`
-  exists.
+- **The browser exits immediately.** Two different packages can cause this,
+  and the error on the way out (in a Terminal, or the crash log under
+  `/boot/system/var/log/`) says which:
+    - `runtime_loader: Cannot open file libmedia.so` -- `libmedia_bootstrap`
+      did not activate. Check `/system/lib/libmedia.so`.
+    - Nothing prints, the window just never appears -- `icu74_bootstrap` did
+      not activate. Check
+      `/packages/icu74_bootstrap-74.1-1/.self/data/icu/74.1/icudt74l.dat`.
 - **https fails.** `/system/data/ssl/CARootCertificates.pem` is missing, so
   `ca_root_certificates` did not activate.
 - **A package sits in `/boot/system/packages/` doing nothing.** It is
@@ -114,6 +135,37 @@ upstream xhci bug stops it finding its own disk), so the installer was tested
 on an arm64 Haiku system with the browser stack removed, not on a stock
 nightly. The
 ABI against master is the one thing here that has not been verified.
+
+## Installing without booting Haiku at all
+
+`install-webpositive-arm64.sh` needs the target Haiku to actually boot, with
+somewhere to attach the install media. That does not always hold: this
+port's xhci does not notice a USB disk plugged in after the machine is
+already running, and its AHCI controller refuses a hot-plugged device
+outright (both tested against a live QEMU instance), so a running machine
+whose devices cannot be changed offers no way in short of a reboot -- which
+is fine on hardware you control, but not if you would rather not boot the
+target at all, or cannot attach anything to it while it is running.
+
+`inject-webpositive-arm64.sh` is the alternative: it writes the packages
+straight into a raw disk image's boot partition from the host side, using
+the same host tools (`bfs_shell`, `fs_shell_command`) Haiku's own build
+system uses to populate a fresh image, without Haiku ever running. It has
+been verified to produce a disk that boots straight to a working
+WebPositive with no boot cycle in between:
+
+```sh
+export BFS_SHELL=/path/to/generated.arm64/objects/linux/arm64/release/tools/bfs_shell/bfs_shell
+export FS_SHELL_COMMAND=/path/to/generated.arm64/objects/linux/arm64/release/tools/fs_shell/fs_shell_command
+./inject-webpositive-arm64.sh haiku-arm64.image
+```
+
+![WebPositive in the Applications menu after a pure external injection, no Haiku boot in between](screenshots/injected-webpositive-menu-arm64.png)
+
+Both tools are host-tool build products of a Haiku source tree, not
+something to install separately -- see `AGENTS.md` for where this project's
+own copies come from, and pass `-m` to skip `libmedia_bootstrap` if the
+target already has a full Media Kit (see above).
 
 ## Running a Haiku arm64 image in QEMU
 
