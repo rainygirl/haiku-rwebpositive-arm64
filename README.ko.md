@@ -15,29 +15,22 @@ English version: [`README.md`](README.md).
 
 기계에 네트워크가 된다면 이게 가장 간단합니다 -- 다만 두 가지를 먼저
 확인해야 합니다. 둘 다 확인 안 하면 `pkgman add-repo`가 이유를 알기 힘든
-방식으로 실패합니다.
+방식으로 실패합니다. 왜 필요한지는 `AGENTS.md`를 보십시오.
 
 **1. 시계부터 맞추십시오.** 이 프로젝트가 시험해본 arm64 이미지는 전부
-부팅하면 `Thu Jan 1 00:04:30 GMT 1970`로 나왔습니다 -- arm64 QEMU의
-`virt` 보드가 부팅 때 RTC를 아예 안 읽고, 이걸 스스로 고치는 이미지를
-아직 본 적이 없습니다. 그 시각으로는 인터넷의 어떤 인증서도 아직
-유효하지 않아서, 시계를 맞추기 전까지는 `add-repo`가 실패합니다
-(TLS가 있는 빌드면 `Operation not allowed`로, 없는 빌드면 조용히):
+부팅하면 `Thu Jan 1 00:04:30 GMT 1970`로 나왔고, 그 시각으로는 인터넷의
+어떤 인증서도 아직 유효하지 않습니다:
 
 ```sh
 date -u MMDDhhmmYYYY    # 예: date -u 0916120026 = UTC 2026년 9월 16일 12시
 ```
 
 **2. 이 이미지의 네트워크 킷에 TLS가 있는지부터 확인하십시오 -- 대부분
-없습니다.** `libbnetapi.so`가 진짜 HTTPS를 지원하게 하는 `openssl`
-빌드 피처는, Haiku 자체를 빌드하던 시점에 arm64 패키지 저장소에
-`openssl3_devel`이 있어야만 켜집니다. 순정 arm64 부트스트랩
-저장소에는 그게 없어서, 순정 arm64 nightly는 물론이고
-[`haiku-renku-arm64-ssltlspatch`](https://github.com/rainygirl/haiku-renku-arm64-ssltlspatch)를
-빌드 전에 적용하지 않은 RenkuOS/Source 빌드도 전부 TLS를 아예 못 하는
-스텁이 링크되고, `https://` 저장소는 시계와 무관하게 전부
-`Operation not supported`로 실패합니다. 이건 부팅 후에 고칠 방법이
-없습니다 -- `http://`를 쓰거나, SSL 패치를 적용해서 다시 빌드하는 것뿐입니다.
+없습니다.** 확인은 `readelf -d /system/lib/libbnetapi.so`에
+`libssl.so.3`/`libcrypto.so.3`가 있는지 보면 됩니다. 이건 부팅 후에 고칠
+방법이 없습니다 -- `http://`를 쓰거나,
+[`haiku-renku-arm64-ssltlspatch`](https://github.com/rainygirl/haiku-renku-arm64-ssltlspatch)로
+빌드된 이미지를 쓰는 것뿐입니다.
 
 - **TLS 없음(흔한 경우):** 이 저장소의 http 미러를 쓰면
   `webpositive`/`libmedia_bootstrap`도 다른 것들과 마찬가지로
@@ -51,16 +44,12 @@ date -u MMDDhhmmYYYY    # 예: date -u 0916120026 = UTC 2026년 9월 16일 12시
   `yes |`는 단순 편의가 아닙니다: 같은 이름의 저장소 설정이 이미
   있으면(예를 들어 앞서 `https://`로 시도했다 실패한 경우) `add-repo`가
   덮어쓸지 물어보는데, stdin이 이미 닫혀 있으면(백그라운드/`nohup`
-  실행 등) 그 질문이 실패하지 않고 무한 반복됩니다 -- 실제로 겪어본
-  것이고, 아무도 모르는 사이 로그로 디스크를 채울 수 있습니다.
-  `pkgman install`이나 `drop-repo`, 확인을 물어볼 수 있는 다른 어떤
-  pkgman 명령에도 같은 얘기가 적용됩니다.
+  실행 등) 그 질문이 실패하지 않고 무한 반복됩니다. `pkgman install`이나
+  `drop-repo`, 확인을 물어볼 수 있는 다른 어떤 pkgman 명령에도 같은
+  얘기가 적용됩니다.
 
-- **이 이미지에 TLS가 있다면**(SSL 패치를 적용해서 빌드했거나,
-  minimum이 아니라 공식 desktop 프로파일 nightly인 경우 -- 확인은
-  `readelf -d /system/lib/libbnetapi.so`에 `libssl.so.3`/`libcrypto.so.3`가
-  있는지 보면 됩니다): 미러 없이 `https://`와 이 저장소를 바로 쓰면
-  됩니다:
+- **이 이미지에 TLS가 있다면:** 미러 없이 `https://`와 이 저장소를
+  바로 쓰면 됩니다:
 
   ```sh
   pkgman add-repo https://raw.githubusercontent.com/rainygirl/haiku-rwebpositive-arm64/main
@@ -78,11 +67,11 @@ date -u MMDDhhmmYYYY    # 예: date -u 0916120026 = UTC 2026년 9월 16일 12시
 curl -fsSL https://pkgman.rainygirl.com/install-all.sh | sh
 ```
 
-이 스크립트는 시계가 2020년 이전이면 서버 자신의 `Date:` 응답 헤더로
-맞추고, `https://`가 실패하면 `http://`로 자동으로 넘어가서, 두 종류의
-이미지 모두에서 따로 물어볼 것 없이 동작합니다. 다만 minimum 이미지에는
-이걸 받을 `curl`(도 `wget`, `sed`, `grep`도) 자체가 없습니다 -- 그 기계에서
-서버와 아직 말할 수 있는 유일한 것은 `openssl s_client`입니다:
+이 스크립트는 시계를 자동으로 맞추고, `https://`가 실패하면 `http://`로
+자동으로 넘어가서, 두 종류의 이미지 모두에서 따로 물어볼 것 없이
+동작합니다. 다만 minimum 이미지에는 이걸 받을 `curl`(도 `wget`도) 자체가
+없습니다 -- 그 기계에서 서버와 아직 말할 수 있는 유일한 것은
+`openssl s_client`입니다:
 
 ```sh
 printf 'GET /install-all.sh HTTP/1.0\r\nHost: pkgman.rainygirl.com\r\n\r\n' \
@@ -93,20 +82,8 @@ printf 'GET /install-all.sh HTTP/1.0\r\nHost: pkgman.rainygirl.com\r\n\r\n' \
 sh /tmp/install-all.sh
 ```
 
-`s_client -quiet`는 인증서를 검증 못 해도 중단하지 않으니, 시계가 아직
-틀려도 됩니다 -- 이건 연결을 신뢰하는 게 아니라 응답 본문을 헤더 뒤에서
-그대로 읽는 것뿐이라서요.
-
 네트워크 자체가 없으면 아래 오프라인 방법 둘 중 하나를 쓰십시오 -- 둘 다
 게스트가 어디에도 접속할 필요가 없습니다.
-
-**미러 관리.** `http://pkgman.rainygirl.com/arm64-webpositive`는 이
-저장소 루트의 `repo`, `repo.info`, `repo.sha256`, `packages/` 전부를
-재포장 없이 그대로 복사한 것입니다 -- `sha256sum`으로 바이트까지
-동일함을 확인했습니다. 그러니 여기서 뭘 고쳐도 미러가 저절로 갱신되진
-않습니다. `packages/`, `repo`, `repo.info`, `repo.sha256` 중 하나라도
-바뀌면, 그 도메인 뒤의 서버의 `/srv/pkgman-repo/arm64-webpositive/`에
-같은 파일을 다시 올려야 합니다.
 
 ## Haiku arm64 이미지에 오프라인으로 설치하기 (pkgman 없이)
 

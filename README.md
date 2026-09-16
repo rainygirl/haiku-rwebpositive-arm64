@@ -15,30 +15,22 @@ Porting notes, measurements and open problems: [`AGENTS.md`](AGENTS.md).
 
 If the machine has a network connection, this is the simplest way -- but
 two things about the image need checking first, because both cause
-`pkgman add-repo` to fail with no useful-looking error.
+`pkgman add-repo` to fail with no useful-looking error. See `AGENTS.md`
+for why each of these is necessary.
 
 **1. Set the clock.** Every arm64 image this project has tested comes up
-reading `Thu Jan 1 00:04:30 GMT 1970` -- arm64 QEMU's `virt` board never
-gets its RTC read at boot, and this project has not seen an image that
-fixes that on its own. No certificate on the real internet is valid yet by
-that clock, so `add-repo` fails (`Operation not allowed` on a build that
-does have TLS, silently on one that does not) until the date is set:
+reading `Thu Jan 1 00:04:30 GMT 1970`, and no certificate on the real
+internet is valid yet by that clock:
 
 ```sh
 date -u MMDDhhmmYYYY    # example: date -u 0916120026 is Sep 16, 12:00, 2026 UTC
 ```
 
 **2. Check whether this image's network kit has TLS at all -- most do
-not.** The `openssl` build feature that gives Haiku's `libbnetapi.so` real
-HTTPS support only turns on if `openssl3_devel` was available in the arm64
-package repository at the time Haiku itself was built; the stock arm64
-bootstrap repository never has it, so every plain arm64 nightly -- and
-every RenkuOS/Source build that has not had
-[`haiku-renku-arm64-ssltlspatch`](https://github.com/rainygirl/haiku-renku-arm64-ssltlspatch)
-applied before building -- links a stub that cannot do TLS, and every
-`https://` repository fails with `Operation not supported`, clock or no
-clock. There is no way to fix this at runtime; either use `http://`
-instead, or build with the SSL patch.
+not.** Check by looking for `libssl.so.3`/`libcrypto.so.3` in
+`readelf -d /system/lib/libbnetapi.so`. There is no way to fix this at
+runtime; either use `http://` instead, or use an image built with
+[`haiku-renku-arm64-ssltlspatch`](https://github.com/rainygirl/haiku-renku-arm64-ssltlspatch).
 
 - **No TLS (the common case):** use the plain-HTTP mirror of this
   repository, and `webpositive`/`libmedia_bootstrap` come down over `http://`
@@ -53,15 +45,12 @@ instead, or build with the SSL patch.
   the same name is already there (from an earlier failed `https://`
   attempt, for instance) `add-repo` asks to overwrite it, and if stdin is
   already closed (a backgrounded/`nohup`'d run, for example) that prompt
-  repeats forever instead of failing -- verified the hard way, it can fill
-  a disk with log output before anyone notices. Same reasoning applies to
+  repeats forever instead of failing. Same reasoning applies to
   `pkgman install`, drop-repo, and any other pkgman command that might ask
   for confirmation.
 
-- **This image does have TLS** (built with the SSL patch, or an official
-  desktop-profile nightly rather than a minimum one -- check by looking
-  for `libssl.so.3`/`libcrypto.so.3` in `readelf -d /system/lib/libbnetapi.so`):
-  use `https://` and this repository directly, no mirror needed:
+- **This image does have TLS:** use `https://` and this repository
+  directly, no mirror needed:
 
   ```sh
   pkgman add-repo https://raw.githubusercontent.com/rainygirl/haiku-rwebpositive-arm64/main
@@ -80,12 +69,11 @@ has a network connection:
 curl -fsSL https://pkgman.rainygirl.com/install-all.sh | sh
 ```
 
-This script sets the clock from the server's own `Date:` response header if
-it reads before 2020, and falls back from `https://` to `http://`
-automatically, so it works on both kinds of image without asking. A
-minimum image has no `curl` (or `wget`, `sed`, `grep`) to fetch it with in
-the first place, though; `openssl s_client` is the one thing on the box
-that can still talk to a server:
+This script sets the clock automatically and falls back from `https://` to
+`http://` automatically, so it works on both kinds of image without asking.
+A minimum image has no `curl` (or `wget`) to fetch it with in the first
+place, though; `openssl s_client` is the one thing on the box that can
+still talk to a server:
 
 ```sh
 printf 'GET /install-all.sh HTTP/1.0\r\nHost: pkgman.rainygirl.com\r\n\r\n' \
@@ -96,20 +84,8 @@ printf 'GET /install-all.sh HTTP/1.0\r\nHost: pkgman.rainygirl.com\r\n\r\n' \
 sh /tmp/install-all.sh
 ```
 
-`s_client -quiet` does not abort on a certificate it cannot verify, so this
-works even with the clock still wrong -- it is reading the response body
-past the header, not trusting anything about the connection.
-
 If the network is not available at all, use one of the two offline methods
 below instead; neither needs the guest to reach anything.
-
-**Maintaining the mirror.** `http://pkgman.rainygirl.com/arm64-webpositive`
-is a plain, unrepacked copy of `repo`, `repo.info`, `repo.sha256` and
-everything under `packages/` at the root of this repository -- same bytes,
-verified by `sha256sum`, so pushing a change here does not update it by
-itself. Whoever last set it up copies those same files to
-`/srv/pkgman-repo/arm64-webpositive/` on the server behind that domain
-whenever `packages/`, `repo`, `repo.info` or `repo.sha256` change here.
 
 ## Installing offline, without pkgman
 
