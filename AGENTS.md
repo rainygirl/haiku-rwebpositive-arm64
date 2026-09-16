@@ -1820,3 +1820,44 @@ Until either that or a plain-HTTP host exists, `install-webpositive-arm64.sh`
 and `inject-webpositive-arm64.sh` remain the only verified ways to get
 WebPositive onto an arm64 image: neither needs the guest to reach a network
 at all.
+
+## The SSL/TLS build patch: it enables TLS, but pkgman still cannot fetch (2026-09-16)
+
+Built and verified `~/Workspace/haiku-apps/renku-arm64-ssltlspatch/
+add-ssl-arm64.sh` (its own GitHub repo:
+https://github.com/rainygirl/haiku-renku-arm64-ssltlspatch): stages
+`openssl3`/`openssl3_devel` into the arm64 bootstrap repository so
+`build/jam/BuildFeatures`'s `openssl` feature turns on -- no Jamfile edits
+needed, `build/jam/DefaultBuildProfiles` already does
+`AddHaikuImageSystemPackages openssl3` for the `minimum` profile, it was
+only ever skipped because the package did not exist in the repository.
+Rebuilt with `jam @minimum-mmc`: the resulting `haiku` package's
+`libbnetapi.so` links `libssl.so.3`/`libcrypto.so.3` (confirmed with
+`readelf -d`), and the image carries `openssl3` without further changes.
+Booted it, and the TLS layer genuinely works: `pkgman add-repo https://...`
+against both `eu.hpkg.haiku-os.org` and `raw.githubusercontent.com`
+completes a real TLS handshake and gets a real HTTP response back -- this
+part of the "pkgman over the network" question from earlier today is
+solved.
+
+It is not enough on its own, though. Both of those `add-repo` calls (and
+plain `http://` against the same host, and `pkgman refresh` against the
+repository pkgman ships pre-configured with) fail identically:
+`*** failed! : Operation not allowed`. Read `B_NOT_ALLOWED`'s meaning in
+context rather than guessing: `src/kits/package/FetchFileJob.cpp` maps it
+specifically from an HTTP response of 403 Forbidden, 405 Method Not
+Allowed, or 406 Not Acceptable -- so the connection and the request both
+succeed, and the *server* is declining it. Ruled out: DNS and plain IP
+connectivity both work (`ping 8.8.8.8` succeeds, DHCP assigns an address
+and a nameserver), the guest's own user (`baron`) is `uid=0`, so it is not
+a local file-permission problem writing the repository cache, and whether
+`/system/data/ssl/CARootCertificates.pem` is present or missing (installed
+it partway through this investigation) makes no difference to the outcome.
+Haiku's HTTP client (`src/kits/network/libnetservices/HttpRequest.cpp`)
+sends a plausible-looking default `User-Agent: Services Kit (Haiku)`, so
+that specific header is not an obvious culprit, but nothing more specific
+than "the server says no" was found this session -- would need reading
+further into what else that client sends (or a packet capture) to pin
+down. Until that is understood, `pkgman` is still not a working install
+path for WebPositive on arm64, over TLS or not; `install-webpositive-arm64.sh`
+and `inject-webpositive-arm64.sh` remain the only verified ones.
