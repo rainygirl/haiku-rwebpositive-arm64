@@ -35,6 +35,29 @@ diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebCore/platform/graphics/haiku
  
      if (m_mediaFile->InitCheck() == B_OK) {
          for (int i = m_mediaFile->CountTracks() - 1; i >= 0; i--)
+diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp
+--- orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp	2026-08-06 17:34:31.990642000 +0000
++++ haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp	2026-10-09 00:00:00.000000000 +0000
+@@ -442,12 +442,16 @@
+     client.setFrame(frame);
+     data->frame->tree().setSpecifiedName(AtomString::fromUTF8(name.String()));
+
+-    data->frame->init();
++    // Hold the LocalFrame here: if init() runs script that removes the frame,
++    // FrameLoaderClientHaiku::detachedFromParent2() deletes this BWebFrame,
++    // and data with it, before init() returns.
++    RefPtr<WebCore::LocalFrame> coreFrame = data->frame;
++    coreFrame->init();
+     // TODO? evas_object_smart_member_add(frame, ewkFrame);
+
+     // The creation of the frame may have run arbitrary JavaScript that removed
+-    // it from the page already.
+-    if (!data->frame->page()) {
++    // it from the page already. frame and data are freed by then (see above).
++    if (!coreFrame->page()) {
+         return nullptr;
+     }
+     return frame;
 diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp
 --- orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp	2026-08-06 17:34:31.990642000 +0000
 +++ haikuwebkit/Source/WebKitLegacy/haiku/API/WebPage.cpp	2026-09-07 00:06:57.000000000 +0000

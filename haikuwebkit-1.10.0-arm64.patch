@@ -510,16 +510,18 @@ diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame
 --- orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp	2026-01-20 17:00:44.531890200 +0000
 +++ haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp	2026-09-05 14:52:47.261550013 +0000
 @@ -450,8 +450,12 @@
-     data->frame->init();
- 
+-    data->frame->init();
++    // Hold the LocalFrame here: if init() runs script that removes the frame,
++    // FrameLoaderClientHaiku::detachedFromParent2() deletes this BWebFrame,
++    // and data with it, before init() returns.
++    RefPtr<WebCore::LocalFrame> coreFrame = data->frame;
++    coreFrame->init();
+
      // The creation of the frame may have run arbitrary JavaScript that removed
 -    // it from the page already.
-+    // it from the page already. Nothing else has a pointer to this BWebFrame
-+    // yet, so this is the one place that can still free it; returning without
-+    // doing so leaked the frame, its WebFramePrivate and the LocalFrame the
-+    // RefPtr in it holds.
-     if (!data->frame->page()) {
-+        delete frame;
+-    if (!data->frame->page()) {
++    // it from the page already. frame and data are freed by then (see above).
++    if (!coreFrame->page()) {
          return nullptr;
      }
      return frame;

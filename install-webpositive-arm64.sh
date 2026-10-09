@@ -132,6 +132,8 @@ aarch64|arm64) say "architecture: $ARCH" ;;
 esac
 
 [ -d "$PKGDIR" ] || die "no package directory at $PKGDIR"
+# $PLAN below is a space-separated list of paths.
+case "$PKGDIR" in *[[:space:]]*) die "the package directory path must not contain spaces: $PKGDIR" ;; esac
 
 # ---------------------------------------------------------------------------
 step "Looking for the packages in $PKGDIR"

@@ -51,6 +51,8 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 [ -f "$IMAGE" ] || die "no such file: $IMAGE"
 [ -d "$PKGDIR" ] || die "no package directory at $PKGDIR"
+# $PLAN below is a space-separated list of paths.
+case "$PKGDIR" in *[[:space:]]*) die "the package directory path must not contain spaces: $PKGDIR" ;; esac
 [ -x "$BFS_SHELL" ] || die "not executable: $BFS_SHELL"
 [ -x "$FS_SHELL_COMMAND" ] || die "not executable: $FS_SHELL_COMMAND"
 
@@ -187,9 +189,9 @@ rm -f "$TO_FIFO" "$FROM_FIFO"
 
 "$BFS_SHELL" 3>&5 4<&6 5>&- 6>&- -n --start-offset "$OFFSET" "$IMAGE" > "$LOG" 2>&1 &
 BFS_PID=$!
+# The log is kept on failure: the error messages below point at it.
 cleanup() {
 	kill "$BFS_PID" 2>/dev/null || true
-	rm -f "$LOG"
 }
 trap cleanup EXIT
 sleep 1
