@@ -65,13 +65,13 @@ build-webkit-deps-arm64.sh                 # third-party libraries -> sysroot
 # extract haikuwebkit-1.10.0.tar.gz to /root/wk/haikuwebkit, then
 patch -p2 < haikuwebkit-1.10.0-arm64.patch  # from inside that directory
 build-haikuwebkit-arm64.sh                 # cmake + ninja + DESTDIR install
-package-haikuwebkit-arm64.sh               # -> haikuwebkit{,_devel}-1.10.0-3-arm64.hpkg
+package-haikuwebkit-arm64.sh               # -> haikuwebkit{,_devel}-1.10.0-6-arm64.hpkg
 build-webpositive-image-arm64.sh           # jam WebPositive, new ISO
 ```
 
 `haiku-arm64.toolchain.cmake` is the CMake toolchain file for all of it.
 
-The packages use the version `1.10.0-3`, following the tree's x86_64
+The packages use the version `1.10.0` (revision 6 as published), following the tree's x86_64
 repository list, so that, listed in `build/jam/repositories/HaikuPorts/arm64` and
 dropped into the download directory, jam's `webkit` build feature finds
 them and `src/apps/webpositive` builds unchanged. The runtime package also
@@ -1893,3 +1893,25 @@ all -- see the README for the exact commands. `install-webpositive-arm64.sh`
 and `inject-webpositive-arm64.sh` remain useful for a system with no
 working clock or no network, but pkgman is now the simplest path where
 both are available.
+
+## Pages at the UI scale (1.10.0-6, 2026-10-10)
+
+With RenkuOS's UI scale at 200% (renku-retina's Screen choice, i.e. 24 pt
+system fonts) every control doubled but pages stayed at one CSS pixel per
+screen pixel - Google at half the size of the window around it.
+`BWebFrame`'s default zoom is now the UI scale (`be_plain_font` size / 12).
+WebCore ignores `setPageAndTextZoomFactors()` while the frame has no
+document, so `FrameLoaderClientHaiku::dispatchDidCommitLoad()` applies it
+to the main frame on its first commit; it then carries over to later
+documents. The zoom steps and their limits are relative to it, "reset"
+returns to it, and the text zoom is kept relative to it, since WebCore
+multiplies it on top of the page zoom. No public header changed, so
+WebPositive needs no rebuild. Verified on the RENKU arm64 VM: google.com at
+2x, loading to "finished", the browser staying up.
+
+Revisions 4 and 5: 4 is the subframe use-after-free fix rebuilt from this
+patch; 5 was an intermediate test build. The published 1.10.0-3 had
+`VECTHIS`/`VECALLOC` debug logging left in libJavaScriptCore, which flooded
+the syslog and made WebPositive crawl until it stopped responding; builds
+from this patch do not have it.
+

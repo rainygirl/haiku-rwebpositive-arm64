@@ -507,16 +507,130 @@ diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/PlatformHaiku.cmak
  )
  
 diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp
---- orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp	2026-01-20 17:00:44.531890200 +0000
-+++ haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp	2026-09-05 14:52:47.261550013 +0000
-@@ -450,8 +450,12 @@
+--- orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp
++++ haikuwebkit/Source/WebKitLegacy/haiku/API/WebFrame.cpp
+@@ -67,17 +67,35 @@
+ #include <wtf/text/CString.h>
+ 
+ #include <Entry.h>
++#include <Font.h>
+ #include <String.h>
+ 
++#include <algorithm>
++
+ static const float kMinimumZoomFactorMultiplier = 0.5;
+ static const float kMaximumZoomFactorMultiplier = 3;
+ static const float kZoomFactorMultiplierRatio = 1.1;
+ 
++
++/*!	The zoom a page is shown at by default: the UI scale, which Haiku keeps
++	as the default font size over its 12 pt base. On a HiDPI screen with the
++	fonts at 200% a CSS pixel is then two screen pixels, like the rest of the
++	system, instead of a page at half size. The zoom steps and their limits
++	are relative to it.
++*/
++static float
++default_zoom_factor()
++{
++	if (be_plain_font == NULL)
++		return 1.0f;
++	return std::max(1.0f, be_plain_font->Size() / 12.0f);
++}
++
+ using namespace WebCore;
+ 
+ BWebFrame::BWebFrame(BWebPage* webPage, BWebFrame* parentFrame,
+         WebFramePrivate* data)
+-    : fZoomFactor(1.0)
++    : fZoomFactor(default_zoom_factor())
+     , fIsEditable(false)
+     , fTitle(0)
+     , fData(data)
+@@ -91,6 +109,8 @@
+ 		client.setFrame(this);
+         fData->frame->init();
+         fData->frame->tree().setSpecifiedName(fData->name);
++        // the page zoom is applied once there is a document, in
++        // FrameLoaderClientHaiku::dispatchDidCommitLoad()
+     } else {
+         // Will be initialized in BWebFrame::AddChild
+     }
+@@ -327,7 +347,8 @@
+ bool BWebFrame::CanIncreaseZoomFactor() const
+ {
+     if (fData->frame) {
+-        if (fZoomFactor * kZoomFactorMultiplierRatio <= kMaximumZoomFactorMultiplier)
++        if (fZoomFactor * kZoomFactorMultiplierRatio
++                <= kMaximumZoomFactorMultiplier * default_zoom_factor())
+             return true;
+     }
+ 
+@@ -337,7 +358,8 @@
+ bool BWebFrame::CanDecreaseZoomFactor() const
+ {
+     if (fData->frame)
+-        return fZoomFactor / kZoomFactorMultiplierRatio >= kMinimumZoomFactorMultiplier;
++        return fZoomFactor / kZoomFactorMultiplierRatio
++            >= kMinimumZoomFactorMultiplier * default_zoom_factor();
+ 
+     return false;
+ }
+@@ -347,9 +369,11 @@
+     if (CanIncreaseZoomFactor()) {
+         fZoomFactor = fZoomFactor * kZoomFactorMultiplierRatio;
+         if (textOnly)
+-            fData->frame->setTextZoomFactor(fZoomFactor);
+-        else
+-            fData->frame->setPageAndTextZoomFactors(fZoomFactor, fZoomFactor);
++            fData->frame->setTextZoomFactor(fZoomFactor / default_zoom_factor());
++        else {
++            fData->frame->setPageAndTextZoomFactors(fZoomFactor,
++                fZoomFactor / default_zoom_factor());
++        }
+     }
+ }
+ 
+@@ -358,21 +382,23 @@
+     if (CanDecreaseZoomFactor()) {
+         fZoomFactor = fZoomFactor / kZoomFactorMultiplierRatio;
+         if (textOnly)
+-            fData->frame->setTextZoomFactor(fZoomFactor);
+-        else
+-            fData->frame->setPageAndTextZoomFactors(fZoomFactor, fZoomFactor);
++            fData->frame->setTextZoomFactor(fZoomFactor / default_zoom_factor());
++        else {
++            fData->frame->setPageAndTextZoomFactors(fZoomFactor,
++                fZoomFactor / default_zoom_factor());
++        }
+     }
+ }
+ 
+ void BWebFrame::ResetZoomFactor()
+ {
+-    if (fZoomFactor == 1)
++    if (fZoomFactor == default_zoom_factor())
+         return;
+ 
+-    fZoomFactor = 1;
++    fZoomFactor = default_zoom_factor();
+ 
+     if (fData->frame)
+-        fData->frame->setPageAndTextZoomFactors(fZoomFactor, fZoomFactor);
++        fData->frame->setPageAndTextZoomFactors(fZoomFactor, 1);
+ }
+ 
+ void BWebFrame::SetEditable(bool editable)
+@@ -447,11 +473,15 @@
+     client.setFrame(frame);
+     data->frame->tree().setSpecifiedName(AtomString::fromUTF8(name.String()));
+ 
 -    data->frame->init();
 +    // Hold the LocalFrame here: if init() runs script that removes the frame,
 +    // FrameLoaderClientHaiku::detachedFromParent2() deletes this BWebFrame,
 +    // and data with it, before init() returns.
 +    RefPtr<WebCore::LocalFrame> coreFrame = data->frame;
 +    coreFrame->init();
-
+ 
      // The creation of the frame may have run arbitrary JavaScript that removed
 -    // it from the page already.
 -    if (!data->frame->page()) {
@@ -752,9 +866,18 @@ diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/API/WebSetti
      _HandleSetWebApplicationCachePath(storagePath.Path());
      BPath dataBasePath(storagePath);
 diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp
---- orig/haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp	2026-03-22 14:38:01.424149000 +0000
-+++ haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp	2026-09-05 14:52:47.260550013 +0000
-@@ -154,6 +154,27 @@
+--- orig/haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp
++++ haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSupport/FrameLoaderClientHaiku.cpp
+@@ -76,6 +76,8 @@
+ #include "WebView.h"
+ #include "WebViewConstants.h"
+ 
++#include <Font.h>
++#include <algorithm>
+ #include <JavaScriptCore/APICast.h>
+ #include <JavaScriptCore/JSContextRef.h>
+ #include <wtf/CompletionHandler.h>
+@@ -154,6 +156,27 @@
  
  void FrameLoaderClientHaiku::detachedFromParent2()
  {
@@ -782,6 +905,26 @@ diff -ruN '--exclude=.*' orig/haikuwebkit/Source/WebKitLegacy/haiku/WebCoreSuppo
  }
  
  void FrameLoaderClientHaiku::detachedFromParent3()
+@@ -429,6 +452,19 @@
+         return;
+     }
+ 
++    // Show the page at the UI scale (BWebFrame's default zoom, the default
++    // font size over 12 pt). It can only be set once the frame has a
++    // document, which is now; it then carries over to later documents.
++    if (m_webPage != nullptr && m_webFrame == m_webPage->MainFrame()) {
++        WebCore::LocalFrame* frame = m_webFrame->Frame();
++        const float scale = be_plain_font != NULL
++            ? std::max(1.0f, be_plain_font->Size() / 12.0f) : 1.0f;
++        if (frame != nullptr && scale != 1.0f
++            && frame->pageZoomFactor() == 1.0f
++            && m_webFrame->fZoomFactor == scale)
++            frame->setPageAndTextZoomFactors(scale, frame->textZoomFactor());
++    }
++
+     BMessage message(LOAD_COMMITTED);
+     URL url = m_webFrame->Frame()->loader().documentLoader()->request().url();
+     BUrl decoded(url);
 diff -ruN '--exclude=.*' orig/haikuwebkit/Source/cmake/OptionsHaiku.cmake haikuwebkit/Source/cmake/OptionsHaiku.cmake
 --- orig/haikuwebkit/Source/cmake/OptionsHaiku.cmake	2026-07-24 16:04:19.826015700 +0000
 +++ haikuwebkit/Source/cmake/OptionsHaiku.cmake	2026-09-02 07:25:43.601283007 +0000
